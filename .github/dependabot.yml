@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      - dependency-name: 'androidx.ink:*'
+        versions: ['*alpha*', '*beta*', '*rc*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

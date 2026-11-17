@@ -1,0 +1,5 @@
+<resources>
+    <color name="paper">#FBF9F4</color>
+    <style name="Theme.Kalpane" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">true</item><item name="android:windowActionModeOverlay">true</item><item name="android:colorAccent">#E0730C</item></style>
+    <style name="Theme.Kalpane.Starting" parent="Theme.SplashScreen"><item name="windowSplashScreenBackground">@color/paper</item><item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item><item name="postSplashScreenTheme">@style/Theme.Kalpane</item></style>
+</resources>
