@@ -20,6 +20,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
@@ -63,7 +66,10 @@ jobs:
           profile: ${{ matrix.profile }}
           disable-animations: true
           script: |
-            ./gradlew connectedDebugAndroidTest --stacktrace
+            status=0
+            ./gradlew connectedDebugAndroidTest --stacktrace || status=$?
+            adb pull /sdcard/Android/data/dev.kalpane/files/screenshots app/build/screenshots || true
+            test "$status" -eq 0
             adb shell settings put system font_scale 2.0
             ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.kalpane.LayoutCaptureTest --stacktrace
             adb shell settings put system font_scale 1.0

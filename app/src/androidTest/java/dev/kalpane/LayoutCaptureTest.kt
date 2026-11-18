@@ -64,9 +64,11 @@ class LayoutCaptureTest {
             ui.waitUntil(15000) {var saved=false;scenario.onActivity {saved=!ViewModelProvider(it)[NotebookViewModel::class.java].state.value.saving};saved}
             capture("03-editor")
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("settings")}
+            ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Text & typography"))
             ui.onNodeWithText("Text & typography").performScrollTo()
             ui.onNodeWithText("Serif").performClick();capture("04-serif-settings")
             ui.onNodeWithText("Monospace").performClick();capture("05-monospace-settings")
+            ui.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Pen-only mode"))
             ui.onNodeWithContentDescription("Pen-only mode").performScrollTo().assertIsToggleable()
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("editor");it.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}
             ui.waitForIdle();ui.onNodeWithContentDescription("Pen").assertIsDisplayed();capture("06-landscape-editor")

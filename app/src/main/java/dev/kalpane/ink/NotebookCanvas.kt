@@ -31,6 +31,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     var onTurn: (Int) -> Unit = {}
     var onLayerMenu: (Layer) -> Unit = {}
     var onTextEdit: (Layer) -> Unit = {}
+    internal val hasActiveStroke: Boolean get() = activePointer != null
     var page: Page? = null; private set
     var tool: Tool = Tool.Pen
     var color: Int = 0xff252522.toInt()

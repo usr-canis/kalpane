@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,7 @@ import java.util.Date
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().heightIn(min=72.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Back",!s.busy,onClick=back);Text("Settings",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(start=12.dp))}
         Box(Modifier.fillMaxSize()) {
-            LazyColumn(Modifier.widthIn(max=760.dp).fillMaxWidth().align(Alignment.TopCenter),contentPadding=PaddingValues(horizontal=24.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+            LazyColumn(Modifier.testTag("settings-list").widthIn(max=760.dp).fillMaxWidth().align(Alignment.TopCenter),contentPadding=PaddingValues(horizontal=24.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                 item {
                     SectionLabel("Make it yours")
                     Text("Appearance",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(top=8.dp,bottom=12.dp))

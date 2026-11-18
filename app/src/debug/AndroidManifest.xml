@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name=".InkTestActivity" android:exported="false" android:theme="@style/Theme.Kalpane" android:hardwareAccelerated="true"/></application></manifest>

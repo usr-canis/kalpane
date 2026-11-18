@@ -18,7 +18,7 @@ class AppFlowTest {
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
         ui.onNodeWithContentDescription("Add text").performClick()
-        ui.onNodeWithText("Text",useUnmergedTree=true).performTextInput("Voltage = current × resistance")
+        ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("More tools").performClick()
@@ -43,8 +43,11 @@ class AppFlowTest {
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()
         ui.onNodeWithText("Appearance").assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("GitHub backup"))
         ui.onNodeWithText("GitHub backup").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Private repository"))
         ui.onNodeWithText("Private repository").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Create branch"))
         ui.onNodeWithText("Create branch").performScrollTo().assertIsDisplayed()
     }
 }
