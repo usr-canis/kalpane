@@ -11,5 +11,7 @@ class MarkdownTest {
         assertEquals(listOf("bold","italic","strike","code","link:https://example.com"),b[1].spans.map {it.kind})
         assertEquals("*literal*",b[2].text);assertEquals(true,b[3].checked)
         assertEquals("**raw**",b[5].text);assertTrue(b[5].code)
+        assertEquals("- [ ] done",Markdown.toggleCheckbox("- [x] done",0))
+        assertEquals("- [x] done",Markdown.toggleCheckbox("- [ ] done",0))
     }
 }

@@ -8,6 +8,7 @@ import dev.kalpane.data.LayerKind
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
 import java.io.File
+import org.junit.Assert.assertTrue
 import androidx.core.view.WindowInsetsCompat
 import org.junit.Rule
 import org.junit.Test
@@ -73,6 +74,25 @@ class AppFlowTest {
         ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("Eraser").performClick()
         ui.waitUntil(5000) {ViewModelProvider(ui.activity)[NotebookViewModel::class.java].state.value.tool==Tool.PartialEraser}
+    }
+    @Test fun newPageAcceptsDirectTypingWithoutChangingPreviousPage() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Pages ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        ui.onRoot().performTouchInput {click(center)}
+        ui.onNode(hasSetTextAction()).performTextInput("First page")
+        ui.onNodeWithContentDescription("Pen").performClick()
+        ui.onNodeWithContentDescription("New page").performClick()
+        val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
+        ui.waitUntil(5000) {model.state.value.notebook?.pages?.size==2}
+        ui.onRoot().performTouchInput {click(center)}
+        ui.onNode(hasSetTextAction()).performTextInput("Second page")
+        ui.waitUntil(5000) {model.state.value.page?.layers?.any {it.text=="Second page"}==true}
+        val pages=model.state.value.notebook!!.pages
+        assertTrue(pages[0].layers.any {it.text=="First page"})
+        assertTrue(pages[1].layers.any {it.text=="Second page"})
     }
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()

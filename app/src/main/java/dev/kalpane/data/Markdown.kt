@@ -4,6 +4,13 @@ package dev.kalpane.data
 internal data class MarkdownSpan(val start: Int,val end: Int,val kind: String)
 internal data class MarkdownBlock(val text: String,val spans: List<MarkdownSpan>,val heading: Int=0,val checked: Boolean?=null,val code: Boolean=false)
 internal object Markdown {
+    fun toggleCheckbox(source: String, line: Int): String {
+        val lines=source.split('\n').toMutableList()
+        val value=lines.getOrNull(line) ?: return source
+        val marker=Regex("^- \\[([ xX])]\\s+").find(value) ?: return source
+        lines[line]=value.replaceRange(3,4,if(marker.groupValues[1]==" ") "x" else " ")
+        return lines.joinToString("\n")
+    }
     fun parse(source: String): List<MarkdownBlock> {
         var inCode=false
         return source.lines().map { line ->

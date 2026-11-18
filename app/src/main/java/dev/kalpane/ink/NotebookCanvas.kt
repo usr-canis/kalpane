@@ -269,7 +269,11 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             if(pos.x in 0f..p.width && pos.y in 0f..p.height) {
                 val text=p.layers.lastOrNull {it.kind==LayerKind.Text && !it.locked && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
                 val image=p.layers.lastOrNull {it.kind==LayerKind.Image && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
-                if(tool!=Tool.Select || image==null) {if(text==null) onTextTap(e.x,e.y,pos.x,pos.y) else onTextEdit(text);return true}
+                if(tool!=Tool.Select || image==null) {
+                    if(text==null) onTextTap(e.x,e.y,pos.x,pos.y)
+                    else if(!toggleCheckboxAt(p,text,pos)) onTextEdit(text)
+                    return true
+                }
             }
         }
         if(tool==Tool.Eraser || tool==Tool.PartialEraser || e.getToolType(index)==MotionEvent.TOOL_TYPE_ERASER) {
@@ -314,6 +318,20 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             val dx=b.x-a.x; val dy=b.y-a.y; val t=if(dx*dx+dy*dy==0f) 0f else (((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy)).coerceIn(0f,1f)
             hypot(p.x-a.x-t*dx,p.y-a.y-t*dy)<=r
         } || l.points.any { hypot(p.x-it.x,p.y-it.y)<=r }
+    }
+    private fun toggleCheckboxAt(page: Page,layer: Layer,pos: PointF): Boolean {
+        if(pos.x-layer.x>layer.fontSize*2f) return false
+        val display=markdownDisplay(layer.text)
+        if(display.isEmpty()) return false
+        textPaint.textSize=layer.fontSize;textPaint.typeface=NoteTypefaces.get(context,layer.textFace)
+        val layout=StaticLayout.Builder.obtain(display,0,display.length,textPaint,layer.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
+        val displayLine=layout.getLineForVertical((pos.y-layer.y).toInt())
+        val sourceLine=display.subSequence(0,layout.getLineStart(displayLine)).count {it=='\n'}
+        if(Markdown.parse(layer.text).getOrNull(sourceLine)?.checked==null) return false
+        val updated=Markdown.toggleCheckbox(layer.text,sourceLine)
+        if(updated==layer.text) return false
+        onEdit(page.copy(layers=page.layers.map {if(it.id==layer.id) it.copy(text=updated) else it}))
+        return true
     }
     override fun performClick(): Boolean { super.performClick(); return true }
     override fun onDetachedFromWindow() { cancelActive(); scope.cancel(); super.onDetachedFromWindow() }
