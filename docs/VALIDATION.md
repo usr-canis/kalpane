@@ -13,7 +13,9 @@ Local JDK 17, Android SDK 36, Gradle 8.13, AndroidX Ink 1.0.0.
 
 CI is configured to run API 29 phone and API 35 tablet emulators with KVM. Instrumented checks exercise notebook creation, text/undo/redo, themes, focus mode, Settings reachability, 48 dp pen target, switch semantics, synthetic pen cancellation, and fixture reload from local storage. The screenshot suite captures library, pages, mixed text/image/ink editor, serif/monospace settings, landscape, dark mode, and focus mode. It is repeated at 200% font scaling.
 
-Execution results and any outstanding failures are recorded below before release. Configured tests are not automatically considered passed.
+On 18 November 2026, [the device jobs in run 44242211163](https://github.com/usr-canis/kalpane/actions/runs/44242211163) passed all **10 instrumented checks on each device**, then passed the additional layout run at **200% font scaling on each device**: 22 successful instrumented executions, no skipped tests. This includes native ink reconstruction after offline reload, completed pen strokes, whole-gesture cancellation, cancelled palm pointers, stylus image moves and position locks, and EXIF-oriented image decoding. The build job caught an Activity-context lint rule; the final change uses Compose's `LocalActivity` and adds an assertion for dark status-bar contrast. Release notes link the final CI run.
+
+The phone and tablet fixture screenshots were inspected for mixed-page rendering, Kannada, serif/monospace text, focus mode, rotation, dark mode, and large text. At 200% text size in phone landscape, the fit-to-page overview is small; Focus mode and pinch zoom provide more writing space. These are synthetic fixture pages, not user notebooks. Original screenshots and JUnit reports are retained in CI artifacts.
 
 The local cloud machine has no `/dev/kvm`. A software emulator booted, but became unresponsive under concurrent compilation and optimization, so it was stopped. This is not recorded as a UI test pass.
 

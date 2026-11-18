@@ -117,7 +117,7 @@ import java.util.Date
                     Text("Unsynced edits stay with their branch. New branches start at the remote head.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp))
                     TextButton(vm::forgetCredential,enabled=!s.busy && s.prefs.repo.isNotBlank()) {Text("Remove stored credential")}
                 }
-                item {HorizontalDivider();Spacer(Modifier.height(16.dp));Brand();Text("Kalpane 0.1 · Built for the thinking in between.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(24.dp))}
+                item {HorizontalDivider();Spacer(Modifier.height(16.dp));Brand();Text("Kalpane ${BuildConfig.VERSION_NAME} · Built for the thinking in between.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(24.dp))}
             }
         }
     }

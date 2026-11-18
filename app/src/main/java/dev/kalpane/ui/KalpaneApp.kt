@@ -1,6 +1,7 @@
 package dev.kalpane.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -11,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.NotebookViewModel
@@ -19,7 +19,7 @@ import kotlinx.coroutines.delay
 
 @Composable fun KalpaneApp(vm: NotebookViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
-    val activity=LocalContext.current as? ComponentActivity
+    val activity=LocalActivity.current as? ComponentActivity
     val night=isNight(s.prefs.theme)
     LaunchedEffect(activity,night) {
         activity?.enableEdgeToEdge(

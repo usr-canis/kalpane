@@ -2,6 +2,8 @@
 
 A native Android engineer’s notebook. Kotlin, Jetpack Compose, fixed Material 3 themes, and **stable AndroidX Ink 1.0.0**. Android 10 / API 29 and later; phones, tablets, rotation, and resizable windows.
 
+[Download the installable 0.1.0 preview APK](https://github.com/usr-canis/kalpane/releases/download/preview-v0.1.0/kalpane-0.1.0-preview.apk) · [Release notes](https://github.com/usr-canis/kalpane/releases/tag/preview-v0.1.0). This preview is development-signed and uses a separate application ID.
+
 ## Build
 
 Open this folder in Android Studio with JDK 17 and Android SDK 36, or run:

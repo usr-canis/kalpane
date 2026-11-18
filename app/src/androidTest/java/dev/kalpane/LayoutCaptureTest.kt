@@ -10,6 +10,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
+import androidx.core.view.WindowCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.kalpane.data.*
@@ -70,16 +71,18 @@ class LayoutCaptureTest {
             ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Text & typography"))
             ui.onNodeWithText("Text & typography").performScrollTo()
             ui.onNodeWithText("Serif").performClick()
-            ui.onNodeWithText("Source Serif 4 · thoughtful & literary").performScrollTo();capture("04-serif-settings")
+            ui.onNodeWithText("Ideas take shape.\nV = I × R").performScrollTo();capture("04-serif-settings")
             ui.onNodeWithText("Monospace").performScrollTo().performClick()
-            ui.onNodeWithText("JetBrains Mono · made for technical notes").performScrollTo();capture("05-monospace-settings")
+            ui.onNodeWithText("Ideas take shape.\nV = I × R").performScrollTo();capture("05-monospace-settings")
             ui.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Pen-only mode"))
             ui.onNodeWithContentDescription("Pen-only mode").performScrollTo().assertIsToggleable()
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("editor");it.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}
             ui.waitUntil(10000) {var landscape=false;scenario.onActivity {landscape=it.resources.configuration.orientation==Configuration.ORIENTATION_LANDSCAPE};landscape}
             ui.waitForIdle();ui.onNodeWithContentDescription("Pen").assertIsDisplayed();capture("06-landscape-editor")
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].preferences {p->p.copy(theme=ThemeMode.Dark)}}
-            ui.waitForIdle();capture("07-dark-editor")
+            ui.waitForIdle()
+            ui.waitUntil(5000) {var darkBars=false;scenario.onActivity {darkBars=!WindowCompat.getInsetsController(it.window,it.window.decorView).isAppearanceLightStatusBars};darkBars}
+            capture("07-dark-editor")
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].focus()}
             ui.onNodeWithContentDescription("Expand tools and exit focus mode").assertIsDisplayed();capture("08-focus")
         }
