@@ -5,6 +5,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.lifecycle.ViewModelProvider
 import dev.kalpane.data.LayerKind
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +26,14 @@ class AppFlowTest {
         ui.onRoot().performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
         ui.onNodeWithText("Done").assertDoesNotExist()
+        ui.onNodeWithContentDescription("Eraser").assertIsDisplayed()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val screenshot=instrumentation.uiAutomation.takeScreenshot()
+        if(screenshot!=null) {
+            val dir=File(instrumentation.targetContext.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+            File(dir,"typing-with-keyboard.png").outputStream().use {screenshot.compress(Bitmap.CompressFormat.PNG,100,it)}
+            screenshot.recycle()
+        }
         ui.waitUntil(10000) {ViewModelProvider(ui.activity)[NotebookViewModel::class.java].state.value.page?.layers?.any {it.kind==LayerKind.Text && it.text.contains("Voltage = current")} == true}
         ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()

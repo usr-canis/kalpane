@@ -11,11 +11,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.*
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import kotlinx.coroutines.delay
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -55,6 +59,7 @@ import dev.kalpane.ink.NotebookCanvas
     var inlinePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var pagePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val focusRequester=remember { FocusRequester() }
+    val bringIntoViewRequester=remember {BringIntoViewRequester()}
     val keyboard=LocalSoftwareKeyboardController.current
     val focusManager=LocalFocusManager.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
@@ -66,17 +71,18 @@ import dev.kalpane.ink.NotebookCanvas
     var layerMenu by remember { mutableStateOf<Layer?>(null) }
     var rename by remember { mutableStateOf(false) }
     val night=isNight(s.prefs.theme)
+    val compactHeight=LocalConfiguration.current.screenHeightDp<480
     val paperAlpha=remember {Animatable(1f)}
     LaunchedEffect(page.id,s.prefs.reducedMotion) {
         if(s.prefs.reducedMotion) paperAlpha.snapTo(1f)
         else {paperAlpha.snapTo(.82f);paperAlpha.animateTo(1f,tween(160))}
     }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(vm::importImage) }
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
+        if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=if(compactHeight) 48.dp else 64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
             ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Pages") { vm.screen("pages") }
             Column(Modifier.weight(1f).clickable {rename=true}.padding(horizontal=8.dp,vertical=8.dp)) {
-                Text(s.notebook?.title.orEmpty().uppercase(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                if(!compactHeight) Text(s.notebook?.title.orEmpty(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
                 Text(page.title,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
             }
             ActionIcon(Icons.Outlined.Add,"New page") {vm.createPage("")}
@@ -121,14 +127,11 @@ import dev.kalpane.ink.NotebookCanvas
             inlineText?.let { text ->
                 val density=LocalDensity.current
                 val fieldWidth=with(density) { (canvasView?.let {canvas->canvas.viewPoint(editingText?.width ?: (page.width-160f),0f).x-canvas.viewPoint(0f,0f).x} ?: 280.dp.toPx()).coerceAtLeast(32.dp.toPx()).toDp() }
-                LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                val fieldFontSize=with(density) { (canvasView?.let {canvas->canvas.viewPoint(0f,editingText?.fontSize ?: s.prefs.textSize).y-canvas.viewPoint(0f,0f).y} ?: 16.sp.toPx()).coerceAtLeast(1f).toSp() }
+                LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show();delay(250);bringIntoViewRequester.bringIntoView() }
+                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).bringIntoViewRequester(bringIntoViewRequester).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontSize=fieldFontSize,fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
-            // A short title crossfade signals page changes without animating low-latency ink surfaces.
-            if(!s.focus) AnimatedContent(targetState=page.id,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page turn",modifier=Modifier.align(Alignment.TopCenter).padding(top=10.dp)) { id ->
-                Text(if(id==page.id) "${s.notebook!!.pages.indexOfFirst { it.id==id }+1}" else "",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.6f))
-            }
 
             }
             }
@@ -138,7 +141,7 @@ import dev.kalpane.ink.NotebookCanvas
             ActionIcon(Icons.Outlined.ChevronLeft,"Previous page",index>0) {vm.turn(-1)}
             TextButton({thumbnails=true},Modifier.weight(1f)) {
                 Text("${index+1} / ${s.notebook!!.pages.size}",style=MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.width(12.dp)); Text(if(s.saving) "Saving…" else "Saved locally",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(!compactHeight) {Spacer(Modifier.width(12.dp)); Text(if(s.saving) "Saving…" else "Saved locally",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             }
             ActionIcon(Icons.Outlined.ChevronRight,"Next page",index<s.notebook!!.pages.lastIndex) {vm.turn(1)}
         }

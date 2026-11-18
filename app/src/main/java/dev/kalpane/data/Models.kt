@@ -57,7 +57,7 @@ fun hash(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest
 @Serializable enum class ThemeMode { System, Light, Dark }
 @Serializable data class Preferences(
     val theme: ThemeMode = ThemeMode.System, val paper: Paper = Paper.Dots,
-    val textFace: TextFace = TextFace.Sans, val textSize: Float = 26f,
+    val textFace: TextFace = TextFace.Sans, val textSize: Float = 44f,
     val penWidth: Float = 3f, val fingerDrawing: Boolean = false,
     val partialEraser: Boolean = false,
     val reducedMotion: Boolean = false, val gridSpacing: Float = 28f,
