@@ -14,5 +14,5 @@ internal fun Page.resizeTextAndReflow(layerId: String, newHeight: Float): Page {
             if(top<boundary) l else if(l.kind==LayerKind.Ink) l.copy(points=l.points.map {it.copy(y=it.y+delta)}) else l.copy(y=l.y+delta)
         }
     }
-    return copy(height=(this.height+delta.coerceAtLeast(0f)).coerceAtMost(10000f),layers=moved)
+    return copy(height=maxOf(this.height+delta.coerceAtLeast(0f),target.y+height+100f).coerceAtMost(10000f),layers=moved)
 }

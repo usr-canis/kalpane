@@ -102,7 +102,7 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
     /** Coalesce one typing session into a single undo entry while saving each change. */
     fun updateTextDuringSession(layer: Layer, firstChange: Boolean) {
         val page=_state.value.page ?: return
-        val updated=page.copy(layers=if(page.layers.any {it.id==layer.id}) page.layers.map {if(it.id==layer.id) it.copy(text=layer.text) else it} else page.layers+layer)
+        val updated=page.copy(height=maxOf(page.height,layer.y+layer.height+100f).coerceAtMost(10000f),layers=if(page.layers.any {it.id==layer.id}) page.layers.map {if(it.id==layer.id) it.copy(text=layer.text) else it} else page.layers+layer)
         if(firstChange) edit(updated) else replace(updated.copy(modified=System.currentTimeMillis()))
     }
     fun resizeTextDuringSession(layerId: String, height: Float) {

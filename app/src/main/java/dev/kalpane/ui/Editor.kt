@@ -15,6 +15,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -53,6 +54,8 @@ import dev.kalpane.ink.NotebookCanvas
     val focusManager=LocalFocusManager.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
     var typingStarted by remember { mutableStateOf(false) }
+    var baseTextHeight by remember { mutableStateOf<Float?>(null) }
+    var baseLayerHeight by remember { mutableStateOf<Float?>(null) }
     BackHandler { if(inlineText!=null) {inlineText=null;editingText=null;keyboard?.hide()} else if(s.focus) vm.focus() else vm.screen("pages") }
     LaunchedEffect(page.id) {inlineText=null;editingText=null;typingStarted=false}
     var layerMenu by remember { mutableStateOf<Layer?>(null) }
@@ -104,12 +107,14 @@ import dev.kalpane.ink.NotebookCanvas
                 onTurn=vm::turn
                 onLayerMenu={layerMenu=it}
                 canvasView=this
-                onTextEdit={layer->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;inlineText=layer.text}}
-                onTextTap={x,y,px,py -> editingText=null;typingStarted=false;inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
+                onTextEdit={layer->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;baseTextHeight=null;baseLayerHeight=layer.height;inlineText=layer.text}}
+                onTextTap={_,_,_,py -> val anchor=viewPoint(80f,py);editingText=null;typingStarted=false;baseTextHeight=null;baseLayerHeight=s.prefs.textSize*1.5f;inlinePosition=androidx.compose.ui.geometry.Offset(anchor.x,anchor.y);pagePosition=androidx.compose.ui.geometry.Offset(80f,py);inlineText=""}
             } },update={it.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().graphicsLayer {alpha=paperAlpha.value})
             inlineText?.let { text ->
+                val density=LocalDensity.current
+                val fieldWidth=with(density) { (canvasView?.let {canvas->canvas.viewPoint(editingText?.width ?: (page.width-160f),0f).x-canvas.viewPoint(0f,0f).x} ?: 280.dp.toPx()).coerceAtLeast(32.dp.toPx()).toDp() }
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->editingText?.let { layer->canvasView?.let { canvas->vm.resizeTextDuringSession(layer.id,canvas.pageDistance(layout.size.height.toFloat()).coerceAtLeast(layer.fontSize*1.5f)) } }},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
@@ -133,7 +138,6 @@ import dev.kalpane.ink.NotebookCanvas
     if(more) ModalBottomSheet(onDismissRequest={more=false}) {
         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.padding(horizontal=24.dp),verticalAlignment=Alignment.CenterVertically) { Text("Your tools",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f)); ActionIcon(Icons.AutoMirrored.Outlined.Redo,"Redo",s.redoAvailable) {vm.redo()} }
-            Row(Modifier.padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) { FilterChip(s.tool==Tool.Eraser,{vm.tool(Tool.Eraser);more=false},label={Text("Erase stroke")}); FilterChip(s.tool==Tool.PartialEraser,{vm.tool(Tool.PartialEraser);more=false},label={Text("Erase part")}) }
             Text("Pen width · ${"%.1f".format(s.penWidth)}",Modifier.padding(start=24.dp,top=12.dp),style=MaterialTheme.typography.labelLarge)
             Slider(s.penWidth,vm::width,valueRange=1f..18f,modifier=Modifier.padding(horizontal=24.dp).semantics {contentDescription="Pen width"})
             Row(Modifier.padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf(1f,3f,6f,12f).forEach {w-> FilterChip(s.penWidth==w,{vm.width(w)},label={Text("${w.toInt()}")}) } }
@@ -159,7 +163,7 @@ import dev.kalpane.ink.NotebookCanvas
     }
     if(colors) ColorPicker(s.penColor,s.prefs.recentColors,{colors=false}) {vm.color(it);colors=false}
     if(rename) NameDialog("Rename page",page.title,{rename=false}) {vm.edit(page.copy(title=it))}
-    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {layer->canvasView?.viewPoint(layer.x,layer.y)?.let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;inlineText=layer.text};layerMenu=null} }
+    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {layer->canvasView?.viewPoint(layer.x,layer.y)?.let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;baseTextHeight=null;baseLayerHeight=layer.height;inlineText=layer.text};layerMenu=null} }
 }
 
 @Composable private fun LayerDialog(page: Page, initial: Layer,onDismiss:()->Unit,onEdit:(Page)->Unit,onText:(Layer)->Unit) {
