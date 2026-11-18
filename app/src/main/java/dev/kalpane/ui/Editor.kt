@@ -7,8 +7,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Animatable
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -22,6 +20,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import android.view.MotionEvent
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -79,18 +81,13 @@ import dev.kalpane.ink.NotebookCanvas
     val night=isNight(s.prefs.theme)
     val keyboardVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
     val compactHeight=LocalConfiguration.current.screenHeightDp<480 || keyboardVisible
-    val paperAlpha=remember {Animatable(1f)}
-    LaunchedEffect(page.id,s.prefs.reducedMotion) {
-        if(s.prefs.reducedMotion) paperAlpha.snapTo(1f)
-        else {paperAlpha.snapTo(.82f);paperAlpha.animateTo(1f,tween(160))}
-    }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(vm::importImage) }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
         if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=if(compactHeight) 48.dp else 64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
             ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Pages") { vm.screen("pages") }
             Column(Modifier.weight(1f).clickable {rename=true}.padding(horizontal=8.dp,vertical=8.dp)) {
                 if(!compactHeight) Text(s.notebook?.title.orEmpty(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
-                Text(page.title,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                AnimatedContent(targetState=page.title,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page") {title->Text(title,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)}
             }
             ActionIcon(Icons.Outlined.Add,"New page") {vm.createPage("")}
             ActionIcon(Icons.Outlined.Fullscreen,"Enter focus mode") {vm.focus()}
@@ -130,18 +127,64 @@ import dev.kalpane.ink.NotebookCanvas
             } },update={view->view.apply {
                 onStylusEnd={focusManager.clearFocus();keyboard?.hide();inlineValue=null;editingText=null}
                 onTextEdit={layer,offset->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;revealSource=true;baseTextHeight=null;baseLayerHeight=layer.height;inlineValue=TextFieldValue(layer.text,selection=TextRange(offset.coerceIn(0,layer.text.length)))}}
-                onTextTap={_,_,_,py -> val anchor=viewPoint(80f,py);editingText=null;typingStarted=false;revealSource=false;baseTextHeight=null;baseLayerHeight=s.prefs.textSize*1.5f;inlinePosition=androidx.compose.ui.geometry.Offset(anchor.x,anchor.y);pagePosition=androidx.compose.ui.geometry.Offset(80f,py);inlineValue=TextFieldValue("")}
-            };view.bind(if(editingText!=null && inlineValue!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().graphicsLayer {alpha=paperAlpha.value})
+                onTextTap={_,_,_,py -> val y=if(page.layers.isEmpty() && page.height<=1500f) 80f else py;val anchor=viewPoint(80f,y);editingText=null;typingStarted=false;revealSource=false;baseTextHeight=null;baseLayerHeight=s.prefs.textSize*1.5f;inlinePosition=androidx.compose.ui.geometry.Offset(anchor.x,anchor.y);pagePosition=androidx.compose.ui.geometry.Offset(80f,y);inlineValue=TextFieldValue("")}
+            };view.bind(if(editingText!=null && inlineValue!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize())
             inlineValue?.let { fieldValue ->
                 val text=fieldValue.text
                 val density=LocalDensity.current
                 val fieldWidth=with(density) { (canvasView?.let {canvas->canvas.viewPoint(editingText?.width ?: (page.width-160f),0f).x-canvas.viewPoint(0f,0f).x} ?: 280.dp.toPx()).coerceAtLeast(32.dp.toPx()).toDp() }
                 val fieldFontSize=with(density) { (canvasView?.let {canvas->canvas.viewPoint(0f,editingText?.fontSize ?: s.prefs.textSize).y-canvas.viewPoint(0f,0f).y} ?: 16.sp.toPx()).coerceAtLeast(1f).toSp() }
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show();delay(250);bringIntoViewRequester.bringIntoView() }
-                BasicTextField(value=fieldValue,visualTransformation=if(revealSource) VisualTransformation.None else MarkdownVisualTransformation,onValueChange={nextValue->inlineValue=nextValue;val value=nextValue.text;if(value!=fieldValue.text) {val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).bringIntoViewRequester(bringIntoViewRequester).pointerInteropFilter {event->
-                    val stylus=(0 until event.pointerCount).any {event.getToolType(it)==MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(it)==MotionEvent.TOOL_TYPE_ERASER}
-                    if(stylus) {val forwarded=MotionEvent.obtain(event);forwarded.offsetLocation(inlinePosition.x,inlinePosition.y);canvasView?.dispatchTouchEvent(forwarded);forwarded.recycle();true} else false
-                }.focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(editingText?.color ?: s.penColor),fontSize=fieldFontSize,fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(
+                    value=fieldValue,
+                    visualTransformation=if(revealSource) VisualTransformation.None else MarkdownVisualTransformation,
+                    onValueChange={nextValue->
+                        inlineValue=nextValue
+                        val value=nextValue.text
+                        if(value!=fieldValue.text) {
+                            val layer=(editingText ?: Layer(
+                                kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,
+                                width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),
+                                color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,
+                                height=s.prefs.textSize*1.5f,
+                            )).copy(text=value)
+                            if(value.isNotEmpty() || editingText!=null) {
+                                vm.updateTextDuringSession(layer,!typingStarted)
+                                typingStarted=true
+                                editingText=layer
+                            }
+                        }
+                    },
+                    onTextLayout={layout->
+                        canvasView?.let {canvas->
+                            val measured=canvas.pageDistance(layout.size.height.toFloat())
+                            val baseline=baseTextHeight
+                            if(baseline==null) baseTextHeight=measured
+                            else if(typingStarted) editingText?.let {layer->
+                                val height=((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f)
+                                vm.resizeTextDuringSession(layer.id,height)
+                            }
+                        }
+                    },
+                    modifier=Modifier.align(Alignment.TopStart)
+                        .offset {androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0))}
+                        .width(fieldWidth).bringIntoViewRequester(bringIntoViewRequester)
+                        .pointerInteropFilter {event->
+                            val stylus=(0 until event.pointerCount).any {event.getToolType(it)==MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(it)==MotionEvent.TOOL_TYPE_ERASER}
+                            if(stylus) {
+                                val forwarded=MotionEvent.obtain(event)
+                                forwarded.offsetLocation(inlinePosition.x,inlinePosition.y)
+                                canvasView?.dispatchTouchEvent(forwarded)
+                                forwarded.recycle()
+                                true
+                            } else false
+                        }.focusRequester(focusRequester),
+                    textStyle=MaterialTheme.typography.bodyLarge.copy(
+                        color=Color(editingText?.color ?: s.penColor),fontSize=fieldFontSize,
+                        fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace),
+                    ),
+                    decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}},
+                )
             }
 
 
@@ -190,6 +233,7 @@ import dev.kalpane.ink.NotebookCanvas
 }
 
 @Composable private fun LayerDialog(page: Page, initial: Layer,onDismiss:()->Unit,onEdit:(Page)->Unit,onText:(Layer)->Unit) {
+    val context=LocalContext.current
     var selectedId by remember { mutableStateOf(initial.id) }
     val l=page.layers.find {it.id==selectedId} ?: run {onDismiss();return}
     var x by remember(l) {mutableStateOf(l.x.toInt().toString())}; var y by remember(l) {mutableStateOf(l.y.toInt().toString())}
@@ -204,6 +248,10 @@ import dev.kalpane.ink.NotebookCanvas
         SettingSwitch("Lock position","Protect this object from moving or erasing.",l.locked) {replace(l.copy(locked=it))}
         if(l.kind==LayerKind.Text) {
             TextButton({onText(l)}) {Text("Edit text")}
+            Markdown.parse(l.text).flatMap {it.spans}.mapNotNull {span->span.kind.takeIf {it.startsWith("link:")}?.removePrefix("link:")}.distinct().forEach {url->
+                val uri=runCatching {Uri.parse(url)}.getOrNull()
+                if(uri?.scheme in listOf("http","https")) TextButton({runCatching {context.startActivity(Intent(Intent.ACTION_VIEW,uri))}.onFailure {Toast.makeText(context,"No app can open this link",Toast.LENGTH_SHORT).show()};onDismiss()}) {Text("Open $url",maxLines=1,overflow=TextOverflow.Ellipsis)}
+            }
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {TextFace.entries.forEach {face->FilterChip(l.textFace==face,{replace(l.copy(textFace=face))},label={Text(face.name)})}}
         }
         if(l.kind!=LayerKind.Ink) {

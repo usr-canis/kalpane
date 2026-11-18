@@ -32,6 +32,8 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     var onStylusEnd: () -> Unit = {}
     var onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> }
     internal val hasActiveStroke: Boolean get() = activePointer != null
+    internal val liveViewportHeight: Int get() = live.layoutParams.height
+    internal val liveViewportOffset: Float get() = liveOffsetY
     var page: Page? = null; private set
     var tool: Tool = Tool.Pen
     var color: Int = 0xff252522.toInt()
@@ -42,6 +44,8 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val policy = InputPolicy()
     private val live = InProgressStrokesView(context)
+    private var liveOffsetY=0f
+    private val liveViewportListener=ViewTreeObserver.OnPreDrawListener { updateLiveViewport();true }
     private val dry = object : View(context) { override fun onDraw(canvas: Canvas) { render(canvas) } }
     private val renderer = CanvasStrokeRenderer.create()
     private val strokes = mutableMapOf<String, Stroke>()
@@ -88,7 +92,8 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     })
     init {
         setBackgroundColor(Color.TRANSPARENT)
-        addView(dry,LayoutParams(-1,-1)); addView(live,LayoutParams(-1,-1))
+        val initialLiveHeight=resources.displayMetrics.heightPixels+(128*resources.displayMetrics.density).roundToInt()
+        addView(dry,LayoutParams(-1,-1)); addView(live,LayoutParams(-1,initialLiveHeight.coerceAtLeast(1)))
         contentDescription = "Notebook paper. Use the pen to write. Select objects to move or resize. Page controls are below."
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         isFocusable = true
@@ -107,12 +112,13 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                         onStroke(pageId,layer)
                     }
                 }
-                dry.invalidate(); live.removeFinishedStrokes(finished.keys)
+                dry.invalidate(); live.removeFinishedStrokes(finished.keys);updateLiveViewport()
             }
         })
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        viewTreeObserver.addOnPreDrawListener(liveViewportListener)
         // Prepare the front buffer before the first pen contact, avoiding first-stroke latency.
         live.eagerInit()
     }
@@ -142,7 +148,31 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         }
         transform(); dry.invalidate()
     }
-    override fun onSizeChanged(w: Int,h: Int,oldw: Int,oldh: Int) { if(oldw>0 && oldh>0 && (w!=oldw || h!=oldh)) cancelActive(); super.onSizeChanged(w,h,oldw,oldh); transform() }
+    override fun onSizeChanged(w: Int,h: Int,oldw: Int,oldh: Int) { if(oldw>0 && oldh>0 && (w!=oldw || h!=oldh)) cancelActive(); super.onSizeChanged(w,h,oldw,oldh); transform();updateLiveViewport() }
+    /** Keep the low-latency surface bounded even when the document is very tall. */
+    private fun updateLiveViewport() {
+        if(height<=0 || activePointer!=null || pending.isNotEmpty()) return
+        val visible=Rect()
+        if(!getLocalVisibleRect(visible)) return
+        val margin=(64*resources.displayMetrics.density).roundToInt()
+        // Use a stable screen-sized surface even for a short page, so first layout
+        // does not immediately destroy and recreate the front buffer.
+        val target=(resources.displayMetrics.heightPixels+2*margin).coerceAtLeast(1)
+        val top=(visible.top-margin).coerceIn(0,(height-target).coerceAtLeast(0))
+        if(live.layoutParams.height!=target) live.layoutParams=live.layoutParams.apply {height=target}
+        if(liveOffsetY!=top.toFloat()) {liveOffsetY=top.toFloat();live.translationY=liveOffsetY}
+    }
+    private inline fun <T> withLiveEvent(event: MotionEvent,block: (MotionEvent)->T): T {
+        if(liveOffsetY==0f) return block(event)
+        val shifted=MotionEvent.obtain(event)
+        shifted.offsetLocation(0f,-liveOffsetY)
+        return try {block(shifted)} finally {shifted.recycle()}
+    }
+    private fun liveToPage(): Matrix {
+        val points=floatArrayOf(0f,liveOffsetY,1f,liveOffsetY,0f,liveOffsetY+1f)
+        inverse.mapPoints(points)
+        return Matrix().apply {setValues(floatArrayOf(points[2]-points[0],points[4]-points[0],points[0],points[3]-points[1],points[5]-points[1],points[1],0f,0f,1f))}
+    }
     private fun transform() {
         val p = page ?: return
         fit = min((width - 20 * resources.displayMetrics.density) / p.width,(height - 16 * resources.displayMetrics.density) / p.height).coerceAtLeast(.01f)
@@ -150,6 +180,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         matrix.reset(); matrix.setScale(s,s); matrix.postTranslate((width-p.width*s)/2+panX,(height-p.height*s)/2+panY); matrix.invert(inverse)
     }
     private fun point(x: Float,y: Float): PointF { val p = floatArrayOf(x,y); inverse.mapPoints(p); return PointF(p[0],p[1]) }
+    internal fun pagePoint(x: Float,y: Float): PointF = point(x,y)
     fun viewPoint(x: Float,y: Float): PointF { val p=floatArrayOf(x,y);matrix.mapPoints(p);return PointF(p[0],p[1]) }
     fun pageDistance(pixels: Float): Float = pixels/(fit*zoom).coerceAtLeast(.01f)
     private fun render(canvas: Canvas) {
@@ -209,11 +240,11 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         return super.onHoverEvent(event)
     }
     private fun cancelActive() {
-        activePointer?.let { id -> val event=objectEvent(); live.cancelStroke(event,id); event.recycle() }
+        activePointer?.let { id -> val event=objectEvent(); withLiveEvent(event) {live.cancelStroke(it,id)}; event.recycle() }
         activeStroke?.let {pending.remove(it)};activeStroke=null;activePointer=null; draft=null; erased.clear(); removeCallbacks(longPress)
     }
     private fun objectEvent(): MotionEvent = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(),MotionEvent.ACTION_CANCEL,0f,0f,0)
-    private fun cancelInk(event: MotionEvent) { activePointer?.let { live.cancelStroke(event,it) };activeStroke?.let {pending.remove(it)};activeStroke=null; activePointer=null }
+    private fun cancelInk(event: MotionEvent) { activePointer?.let { id->withLiveEvent(event) {live.cancelStroke(it,id)} };activeStroke?.let {pending.remove(it)};activeStroke=null; activePointer=null }
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val action=e.actionMasked; val index=e.actionIndex; val pointer=e.getPointerId(index)
         val penIndices=(0 until e.pointerCount).filter { e.getToolType(it) == MotionEvent.TOOL_TYPE_STYLUS || e.getToolType(it) == MotionEvent.TOOL_TYPE_ERASER }
@@ -242,8 +273,8 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         val active=activePointer
         if(active!=null) {
             when(action) {
-                MotionEvent.ACTION_MOVE -> live.addToStroke(e,active,null)
-                MotionEvent.ACTION_UP,MotionEvent.ACTION_POINTER_UP -> if(pointer==active) { live.finishStroke(e,active); activePointer=null;activeStroke=null }
+                MotionEvent.ACTION_MOVE -> withLiveEvent(e) {live.addToStroke(it,active,null)}
+                MotionEvent.ACTION_UP,MotionEvent.ACTION_POINTER_UP -> if(pointer==active) { withLiveEvent(e) {live.finishStroke(it,active)}; activePointer=null;activeStroke=null }
             }
             return true
         }
@@ -253,7 +284,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             if(at.x in 0f..p.width && at.y in 0f..p.height) {
                 requestUnbufferedDispatch(e); parent?.requestDisallowInterceptTouchEvent(true)
                 activePointer=pointer; activeIsPen=isPen
-                val id=live.startStroke(e,pointer,inkBrush(color,penWidth),inverse)
+                val id=withLiveEvent(e) {live.startStroke(it,pointer,inkBrush(color,penWidth),liveToPage())}
                 activeStroke=id;pending[id]=Triple(p.id,color,penWidth)
             }
             return true
@@ -346,5 +377,5 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         return offsets[visual.coerceIn(offsets.indices)]
     }
     override fun performClick(): Boolean { super.performClick(); return true }
-    override fun onDetachedFromWindow() { cancelActive(); scope.cancel(); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() { if(viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(liveViewportListener);cancelActive(); scope.cancel(); super.onDetachedFromWindow() }
 }
