@@ -18,8 +18,9 @@ class AppFlowTest {
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
         ui.onNodeWithContentDescription("Add text").performClick()
+        ui.onNodeWithContentDescription("Notebook paper. Use the pen to write. Select objects to move or resize. Page controls are below.").performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
-        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithText("Done").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("More tools").performClick()
         ui.onNodeWithContentDescription("Redo").assertIsEnabled().performClick()
