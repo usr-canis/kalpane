@@ -65,15 +65,7 @@ jobs:
           target: default
           profile: ${{ matrix.profile }}
           disable-animations: true
-          script: |
-            status=0
-            ./gradlew connectedDebugAndroidTest --stacktrace || status=$?
-            adb pull /sdcard/Android/data/dev.kalpane/files/screenshots app/build/screenshots || true
-            test "$status" -eq 0
-            adb shell settings put system font_scale 2.0
-            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.kalpane.LayoutCaptureTest --stacktrace
-            adb shell settings put system font_scale 1.0
-            adb pull /sdcard/Android/data/dev.kalpane/files/screenshots app/build/screenshots
+          script: bash scripts/ci-device-tests.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -82,3 +74,4 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             app/build/screenshots/
+            app/build/device-validation/

@@ -110,6 +110,11 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             }
         })
     }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Prepare the front buffer before the first pen contact, avoiding first-stroke latency.
+        live.eagerInit()
+    }
     fun bind(p: Page, newTool: Tool, newColor: Int, width: Float, fingers: Boolean, night: Boolean, spacing: Float) {
         if(page?.id != p.id) {
             cancelActive(); selected = null; draft = null; zoom = 1f; panX = 0f; panY = 0f
