@@ -42,7 +42,7 @@ import dev.kalpane.ink.NotebookCanvas
     var more by remember { mutableStateOf(false) }
     var colors by remember { mutableStateOf(false) }
     var thumbnails by remember { mutableStateOf(false) }
-    var textDialog by remember { mutableStateOf(false) }
+    var canvasView by remember { mutableStateOf<NotebookCanvas?>(null) }
     var inlineText by remember { mutableStateOf<String?>(null) }
     var inlinePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var pagePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
@@ -75,12 +75,12 @@ import dev.kalpane.ink.NotebookCanvas
                 onStroke={pageId,layer -> vm.state.value.workspace.document.pages().find { it.id==pageId }?.let { vm.edit(it.copy(layers=it.layers+layer)) } }
                 onTurn=vm::turn
                 onLayerMenu={layerMenu=it}
-                onTextEdit={editingText=it;textDialog=true}
-                onTextTap={x,y,px,py -> inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
-            } },update={it.bind(page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().padding(bottom=64.dp).graphicsLayer {alpha=paperAlpha.value})
+                canvasView=this
+                onTextTap={x,y,px,py -> editingText=null;inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
+            } },update={it.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().padding(bottom=64.dp).graphicsLayer {alpha=paperAlpha.value})
             inlineText?.let { text ->
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
@@ -94,7 +94,7 @@ import dev.kalpane.ink.NotebookCanvas
                     ActionIcon(Icons.Outlined.AutoFixNormal,"Eraser",selected=s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) {more=true}
                     ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
                     ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
-                    if(inlineText!=null) TextButton(onClick={val text=inlineText.orEmpty(); val current=vm.state.value.page; if(text.isNotBlank() && current!=null) vm.edit(current.copy(layers=current.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)));inlineText=null;keyboard?.hide()}) {Text("Done")}
+                    if(inlineText!=null) TextButton(onClick={val text=inlineText.orEmpty(); val current=vm.state.value.page; val existing=editingText; if(text.isNotBlank() && current!=null) vm.edit(current.copy(layers=if(existing==null) current.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize) else current.layers.map {if(it.id==existing.id) it.copy(text=text) else it}));inlineText=null;editingText=null;keyboard?.hide()}) {Text("Done")}
                     IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
                     ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
                     ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
@@ -139,14 +139,8 @@ import dev.kalpane.ink.NotebookCanvas
         }
     }
     if(colors) ColorPicker(s.penColor,s.prefs.recentColors,{colors=false}) {vm.color(it);colors=false}
-    if(textDialog) TextEditor(editingText?.text.orEmpty(),editingText?.textFace ?: s.prefs.textFace,{textDialog=false}) {vm.addText(it,editingText);textDialog=false}
     if(rename) NameDialog("Rename page",page.title,{rename=false}) {vm.edit(page.copy(title=it))}
-    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {editingText=it;textDialog=true;layerMenu=null} }
-}
-
-@Composable private fun TextEditor(initial: String,face: TextFace,onDismiss: ()->Unit,onSave:(String)->Unit) {
-    var text by remember {mutableStateOf(initial)}
-    AlertDialog(onDismissRequest=onDismiss,title={Text(if(initial.isEmpty()) "Add a thought" else "Edit text")},text={OutlinedTextField(text,{text=it},label={Text("Text")},minLines=5,maxLines=12,textStyle=LocalTextStyle.current.copy(fontFamily=noteFont(face)),modifier=Modifier.fillMaxWidth())},confirmButton={TextButton({onSave(text)},enabled=text.isNotBlank()){Text("Save")}},dismissButton={TextButton(onDismiss){Text("Cancel")}})
+    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {layer->canvasView?.viewPoint(layer.x,layer.y)?.let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;inlineText=layer.text};layerMenu=null} }
 }
 
 @Composable private fun LayerDialog(page: Page, initial: Layer,onDismiss:()->Unit,onEdit:(Page)->Unit,onText:(Layer)->Unit) {

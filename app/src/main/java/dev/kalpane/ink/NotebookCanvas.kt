@@ -149,6 +149,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         matrix.reset(); matrix.setScale(s,s); matrix.postTranslate((width-p.width*s)/2+panX,(height-p.height*s)/2+panY); matrix.invert(inverse)
     }
     private fun point(x: Float,y: Float): PointF { val p = floatArrayOf(x,y); inverse.mapPoints(p); return PointF(p[0],p[1]) }
+    fun viewPoint(x: Float,y: Float): PointF { val p=floatArrayOf(x,y);matrix.mapPoints(p);return PointF(p[0],p[1]) }
     private fun render(canvas: Canvas) {
         val p = page ?: return
         canvas.save(); canvas.concat(matrix)
