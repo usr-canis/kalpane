@@ -25,7 +25,8 @@ class AppFlowTest {
         ui.onNodeWithContentDescription("More tools").performClick()
         ui.onNodeWithContentDescription("Redo").assertIsEnabled().performClick()
         ui.onNodeWithText("Settings").performClick()
-        ui.onNodeWithText("Appearance").assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Appearance"))
+        ui.onNodeWithText("Appearance").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Dark").performClick()
         ui.onNodeWithText("Light").performClick()
         ui.onNodeWithText("System").performClick()
@@ -43,7 +44,8 @@ class AppFlowTest {
     }
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()
-        ui.onNodeWithText("Appearance").assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Appearance"))
+        ui.onNodeWithText("Appearance").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Git remote"))
         ui.onNodeWithText("Git remote").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Private repository"))
