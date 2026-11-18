@@ -1,6 +1,7 @@
 package dev.kalpane.ink
 
 import android.graphics.Typeface
+import android.content.Context
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.RelativeSizeSpan
@@ -10,9 +11,11 @@ import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
 import android.text.style.BackgroundColorSpan
 import dev.kalpane.data.Markdown
+import dev.kalpane.data.TextFace
+import dev.kalpane.ui.NoteTypefaces
 
 /** Render markup only when a block is not being edited; the saved source stays intact. */
-internal fun markdownDisplay(source: String): CharSequence {
+internal fun markdownDisplay(source: String,context: Context): CharSequence {
     val result=SpannableStringBuilder()
     Markdown.parse(source).forEachIndexed {i,block->
         if(i>0) result.append('\n')
@@ -24,7 +27,7 @@ internal fun markdownDisplay(source: String): CharSequence {
         val flags=Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         if(end>start) {
             if(block.heading>0) {result.setSpan(StyleSpan(Typeface.BOLD),start,end,flags);result.setSpan(RelativeSizeSpan((1.55f-(block.heading-1)*.1f).coerceAtLeast(1f)),start,end,flags)}
-            if(block.code) {result.setSpan(TypefaceSpan("monospace"),start,end,flags);result.setSpan(BackgroundColorSpan(0xffeeece5.toInt()),start,end,flags)}
+            if(block.code) {result.setSpan(TypefaceSpan(NoteTypefaces.get(context,TextFace.Monospace)),start,end,flags);result.setSpan(BackgroundColorSpan(0xffeeece5.toInt()),start,end,flags)}
         }
         block.spans.forEach {span->
             val a=contentStart+span.start;val b=contentStart+span.end
@@ -32,7 +35,7 @@ internal fun markdownDisplay(source: String): CharSequence {
                 span.kind=="bold" -> result.setSpan(StyleSpan(Typeface.BOLD),a,b,flags)
                 span.kind=="italic" -> result.setSpan(StyleSpan(Typeface.ITALIC),a,b,flags)
                 span.kind=="strike" -> result.setSpan(StrikethroughSpan(),a,b,flags)
-                span.kind=="code" -> result.setSpan(TypefaceSpan("monospace"),a,b,flags)
+                span.kind=="code" -> result.setSpan(TypefaceSpan(NoteTypefaces.get(context,TextFace.Monospace)),a,b,flags)
                 span.kind.startsWith("link:") -> result.setSpan(UnderlineSpan(),a,b,flags)
             }
         }

@@ -16,7 +16,7 @@ import dev.kalpane.data.Markdown
 import dev.kalpane.data.projectMarkdown
 
 /** The model retains raw Markdown; cursor offsets refer to the original source. */
-internal object MarkdownVisualTransformation : VisualTransformation {
+internal class MarkdownVisualTransformation(private val codeFamily: FontFamily=FontFamily.Monospace) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val projection=projectMarkdown(text.text)
         val blocks=Markdown.parse(text.text)
@@ -28,7 +28,7 @@ internal object MarkdownVisualTransformation : VisualTransformation {
                 val contentStart=start+prefix
                 val end=(contentStart+block.text.length).coerceAtMost(length)
                 if(end>start && block.heading>0) addStyle(SpanStyle(fontWeight=FontWeight.Bold,fontSize=(1.55f-(block.heading-1)*.1f).coerceAtLeast(1f).em),start,end)
-                if(end>start && block.code) addStyle(SpanStyle(fontFamily=FontFamily.Monospace,background=Color(0xffeeece5)),start,end)
+                if(end>start && block.code) addStyle(SpanStyle(fontFamily=codeFamily,background=Color(0xffeeece5)),start,end)
                 block.spans.forEach {span->
                     val a=(contentStart+span.start).coerceAtMost(length);val b=(contentStart+span.end).coerceAtMost(length)
                     if(a<b) {
@@ -36,7 +36,7 @@ internal object MarkdownVisualTransformation : VisualTransformation {
                             span.kind=="bold" -> SpanStyle(fontWeight=FontWeight.Bold)
                             span.kind=="italic" -> SpanStyle(fontStyle=FontStyle.Italic)
                             span.kind=="strike" -> SpanStyle(textDecoration=TextDecoration.LineThrough)
-                            span.kind=="code" -> SpanStyle(fontFamily=FontFamily.Monospace)
+                            span.kind=="code" -> SpanStyle(fontFamily=codeFamily)
                             span.kind.startsWith("link:") -> SpanStyle(textDecoration=TextDecoration.Underline)
                             else -> SpanStyle()
                         }

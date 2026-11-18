@@ -214,7 +214,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 LayerKind.Text -> {
                     textPaint.color = l.color; textPaint.textSize = l.fontSize
                     textPaint.typeface = NoteTypefaces.get(context,l.textFace)
-                    val display=markdownDisplay(l.text)
+                    val display=markdownDisplay(l.text,context)
                     val layout = StaticLayout.Builder.obtain(display,0,display.length,textPaint,l.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
                     canvas.save(); canvas.translate(l.x,l.y); layout.draw(canvas); canvas.restore()
                 }
@@ -354,7 +354,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     }
     private fun toggleCheckboxAt(page: Page,layer: Layer,pos: PointF): Boolean {
         if(pos.x-layer.x>layer.fontSize*2f) return false
-        val display=markdownDisplay(layer.text)
+        val display=markdownDisplay(layer.text,context)
         if(display.isEmpty()) return false
         textPaint.textSize=layer.fontSize;textPaint.typeface=NoteTypefaces.get(context,layer.textFace)
         val layout=StaticLayout.Builder.obtain(display,0,display.length,textPaint,layer.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
@@ -367,7 +367,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         return true
     }
     private fun sourceOffsetAt(layer: Layer,pos: PointF): Int {
-        val display=markdownDisplay(layer.text)
+        val display=markdownDisplay(layer.text,context)
         if(display.isEmpty()) return layer.text.length
         textPaint.textSize=layer.fontSize;textPaint.typeface=NoteTypefaces.get(context,layer.textFace)
         val layout=StaticLayout.Builder.obtain(display,0,display.length,textPaint,layer.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()

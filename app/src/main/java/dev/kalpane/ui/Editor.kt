@@ -70,6 +70,8 @@ import dev.kalpane.ink.NotebookCanvas
     val bringIntoViewRequester=remember {BringIntoViewRequester()}
     val keyboard=LocalSoftwareKeyboardController.current
     val focusManager=LocalFocusManager.current
+    val codeFamily=noteFont(TextFace.Monospace)
+    val markdownTransformation=remember(codeFamily) {MarkdownVisualTransformation(codeFamily)}
     var editingText by remember(page.id) { mutableStateOf<Layer?>(null) }
     var typingStarted by remember(page.id) { mutableStateOf(false) }
     var revealSource by remember(page.id) { mutableStateOf(false) }
@@ -138,7 +140,7 @@ import dev.kalpane.ink.NotebookCanvas
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show();delay(250);bringIntoViewRequester.bringIntoView() }
                 BasicTextField(
                     value=fieldValue,
-                    visualTransformation=if(revealSource) VisualTransformation.None else MarkdownVisualTransformation,
+                    visualTransformation=if(revealSource) VisualTransformation.None else markdownTransformation,
                     onValueChange={nextValue->
                         inlineValue=nextValue
                         val value=nextValue.text
