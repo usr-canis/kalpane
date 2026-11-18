@@ -64,7 +64,6 @@ class LayoutCaptureTest {
             ui.waitForIdle();capture("02-pages")
             ui.onNodeWithContentDescription("Continue last page").performClick()
             ui.onNodeWithContentDescription("Pen").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
-            ui.onNodeWithContentDescription("Add text").assertIsDisplayed()
             ui.waitUntil(15000) {var saved=false;scenario.onActivity {saved=!ViewModelProvider(it)[NotebookViewModel::class.java].state.value.saving};saved}
             capture("03-editor")
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("settings")}

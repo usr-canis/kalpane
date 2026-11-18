@@ -265,6 +265,13 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             lastX=e.x; lastY=e.y; return true
         }
         val pos=point(e.getX(index),e.getY(index)); val p=page ?: return true
+        if((tool==Tool.Text || (!isPen && !fingerDrawing && tool!=Tool.Navigate)) && action==MotionEvent.ACTION_UP && !touchedMultiple && hypot(e.x-downX,e.y-downY)<ViewConfiguration.get(context).scaledTouchSlop) {
+            if(pos.x in 0f..p.width && pos.y in 0f..p.height) {
+                val text=p.layers.lastOrNull {it.kind==LayerKind.Text && !it.locked && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
+                val image=p.layers.lastOrNull {it.kind==LayerKind.Image && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
+                if(tool!=Tool.Select || image==null) {if(text==null) onTextTap(e.x,e.y,pos.x,pos.y) else onTextEdit(text);return true}
+            }
+        }
         if(tool==Tool.Eraser || tool==Tool.PartialEraser || e.getToolType(index)==MotionEvent.TOOL_TYPE_ERASER) {
             if(isPen || fingerDrawing) {
                 if(action==MotionEvent.ACTION_DOWN || action==MotionEvent.ACTION_POINTER_DOWN || action==MotionEvent.ACTION_MOVE) {
@@ -272,13 +279,6 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 }
                 if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP) { if(tool==Tool.PartialEraser && erasePath.isNotEmpty()) {val layers=p.layers.flatMap {if(it.kind==LayerKind.Ink && !it.locked) eraseParts(it,erasePath,18f/(fit*zoom)) else listOf(it)};if(layers!=p.layers) onEdit(p.copy(layers=layers))} else if(erased.isNotEmpty()) onEdit(p.copy(layers=p.layers.filterNot { it.id in erased })); erased.clear(); erasePath.clear(); dry.invalidate() }
             }; return true
-        }
-        if((tool==Tool.Text || (tool==Tool.Pen && !isPen && !fingerDrawing)) && action==MotionEvent.ACTION_UP && !touchedMultiple && hypot(e.x-downX,e.y-downY)<ViewConfiguration.get(context).scaledTouchSlop) {
-            if(pos.x in 0f..p.width && pos.y in 0f..p.height) {
-                val text=p.layers.lastOrNull {it.kind==LayerKind.Text && !it.locked && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
-                if(text==null) onTextTap(e.x,e.y,pos.x,pos.y) else onTextEdit(text)
-            }
-            return true
         }
         if(tool==Tool.Select) {
             when(action) {

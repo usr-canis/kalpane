@@ -8,6 +8,7 @@ import dev.kalpane.data.LayerKind
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
 import java.io.File
+import androidx.core.view.WindowInsetsCompat
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +28,10 @@ class AppFlowTest {
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
         ui.onNodeWithText("Done").assertDoesNotExist()
         ui.onNodeWithContentDescription("Eraser").assertIsDisplayed()
+        ui.waitUntil(10000) {
+            val insets=ui.activity.window.decorView.rootWindowInsets
+            insets!=null && WindowInsetsCompat.toWindowInsetsCompat(insets).isVisible(WindowInsetsCompat.Type.ime())
+        }
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val screenshot=instrumentation.uiAutomation.takeScreenshot()
         if(screenshot!=null) {
@@ -56,6 +61,18 @@ class AppFlowTest {
         ui.onNodeWithContentDescription("Add text").assertDoesNotExist()
         ui.onNodeWithContentDescription("Expand tools and exit focus mode").assertIsDisplayed().performClick()
         ui.onNodeWithContentDescription("Pen").assertIsDisplayed()
+    }
+    @Test fun eraserTapUsesLastSelectedMode() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Eraser ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        ui.onNodeWithContentDescription("Eraser").performTouchInput { longClick() }
+        ui.onNodeWithText("Erase part").performClick()
+        ui.onNodeWithContentDescription("Pen").performClick()
+        ui.onNodeWithContentDescription("Eraser").performClick()
+        ui.waitUntil(5000) {ViewModelProvider(ui.activity)[NotebookViewModel::class.java].state.value.tool==Tool.PartialEraser}
     }
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()

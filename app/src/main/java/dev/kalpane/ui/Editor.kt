@@ -103,7 +103,6 @@ import dev.kalpane.ink.NotebookCanvas
                         }
                     }
                     ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
-                    ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
                     IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
                     ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
                     ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {focusManager.clearFocus();inlineText=null;editingText=null;keyboard?.hide();more=true}
