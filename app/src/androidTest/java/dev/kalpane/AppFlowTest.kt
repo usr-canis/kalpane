@@ -19,7 +19,7 @@ class AppFlowTest {
         ui.onNodeWithText("Name").performTextInput("Device test ${System.nanoTime()}")
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
-        ui.onNodeWithContentDescription("Add text").performClick()
+        // A finger tap starts typing even while the pen is the active tool.
         ui.onRoot().performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
         ui.onNodeWithText("Done").assertDoesNotExist()

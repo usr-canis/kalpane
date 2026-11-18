@@ -29,6 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,7 +87,10 @@ import dev.kalpane.ink.NotebookCanvas
                 else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
                     ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {focusManager.clearFocus();inlineText=null;editingText=null;keyboard?.hide();vm.tool(Tool.Pen)}
                     Box {
-                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {Icon(Icons.Outlined.AutoFixNormal,null,Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
+                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {
+                            val tint=MaterialTheme.colorScheme.onSurfaceVariant
+                            Canvas(Modifier.size(22.dp)) {rotate(40f) {val w=size.width;val h=size.height;drawRoundRect(tint,Offset(w*.2f,h*.12f),Size(w*.6f,h*.76f),CornerRadius(w*.1f),style=Stroke(2.dp.toPx()));drawLine(tint,Offset(w*.2f,h*.58f),Offset(w*.8f,h*.58f),2.dp.toPx())}}
+                        }
                         DropdownMenu(expanded=eraserMenu,onDismissRequest={eraserMenu=false}) {
                             DropdownMenuItem(text={Text("Erase part")},onClick={vm.preferences {it.copy(partialEraser=true)};vm.tool(Tool.PartialEraser);eraserMenu=false})
                             DropdownMenuItem(text={Text("Erase stroke")},onClick={vm.preferences {it.copy(partialEraser=false)};vm.tool(Tool.Eraser);eraserMenu=false})
