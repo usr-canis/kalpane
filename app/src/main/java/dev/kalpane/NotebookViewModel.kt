@@ -102,8 +102,15 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
     /** Coalesce one typing session into a single undo entry while saving each change. */
     fun updateTextDuringSession(layer: Layer, firstChange: Boolean) {
         val page=_state.value.page ?: return
-        val updated=page.copy(layers=if(page.layers.any {it.id==layer.id}) page.layers.map {if(it.id==layer.id) layer else it} else page.layers+layer)
+        val updated=page.copy(layers=if(page.layers.any {it.id==layer.id}) page.layers.map {if(it.id==layer.id) it.copy(text=layer.text) else it} else page.layers+layer)
         if(firstChange) edit(updated) else replace(updated.copy(modified=System.currentTimeMillis()))
+    }
+    fun resizeTextDuringSession(layerId: String, height: Float) {
+        val page=_state.value.page ?: return
+        val old=page.layers.firstOrNull {it.id==layerId} ?: return
+        if(kotlin.math.abs(old.height-height)<2f) return
+        val updated=page.resizeTextAndReflow(layerId,height)
+        if(updated!=page) replace(updated.copy(modified=System.currentTimeMillis()))
     }
     private fun replace(page: Page) { _state.update { it.copy(workspace = it.workspace.copy(document = it.workspace.document.replace(page))) }; historyState(); persist() }
     fun undo() { val p = _state.value.page ?: return; val previous = undo[p.id]?.removeLastOrNull() ?: return; redo.getOrPut(p.id) { ArrayDeque() }.addLast(p); replace(previous) }

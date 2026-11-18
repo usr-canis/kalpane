@@ -90,7 +90,11 @@ import dev.kalpane.ink.NotebookCanvas
                     ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
                 }
             }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val paperWidth=minOf(maxWidth,760.dp)
+            val paperHeight=paperWidth*(page.height/page.width)+16.dp
+            Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.width(paperWidth).height(paperHeight).align(Alignment.TopCenter)) {
             // A single persistent Ink view avoids losing in-flight strokes during Compose recomposition.
             AndroidView(factory={ context -> NotebookCanvas(context,vm.store).apply {
                 onEdit=vm::edit
@@ -103,7 +107,7 @@ import dev.kalpane.ink.NotebookCanvas
             } },update={it.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().graphicsLayer {alpha=paperAlpha.value})
             inlineText?.let { text ->
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->editingText?.let { layer->canvasView?.let { canvas->vm.resizeTextDuringSession(layer.id,canvas.pageDistance(layout.size.height.toFloat()).coerceAtLeast(layer.fontSize*1.5f)) } }},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
@@ -111,6 +115,8 @@ import dev.kalpane.ink.NotebookCanvas
                 Text(if(id==page.id) "${s.notebook!!.pages.indexOfFirst { it.id==id }+1}" else "",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.6f))
             }
 
+            }
+            }
         }
         if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             val index=s.notebook!!.pages.indexOfFirst {it.id==page.id}
