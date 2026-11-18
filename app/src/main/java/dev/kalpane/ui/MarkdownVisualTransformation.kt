@@ -11,6 +11,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.graphics.Color
 import dev.kalpane.data.Markdown
 import dev.kalpane.data.projectMarkdown
 
@@ -27,7 +28,7 @@ internal object MarkdownVisualTransformation : VisualTransformation {
                 val contentStart=start+prefix
                 val end=(contentStart+block.text.length).coerceAtMost(length)
                 if(end>start && block.heading>0) addStyle(SpanStyle(fontWeight=FontWeight.Bold,fontSize=(1.55f-(block.heading-1)*.1f).coerceAtLeast(1f).em),start,end)
-                if(end>start && block.code) addStyle(SpanStyle(fontFamily=FontFamily.Monospace),start,end)
+                if(end>start && block.code) addStyle(SpanStyle(fontFamily=FontFamily.Monospace,background=Color(0xffeeece5)),start,end)
                 block.spans.forEach {span->
                     val a=(contentStart+span.start).coerceAtMost(length);val b=(contentStart+span.end).coerceAtMost(length)
                     if(a<b) {
