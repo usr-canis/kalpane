@@ -22,6 +22,9 @@ class InkViewportTest {
             lateinit var scroller: ScrollView
             scenario.onActivity {activity->
                 canvas=NotebookCanvas(activity,DiskStore(File(activity.cacheDir,"viewport-test"))).apply {
+                    // ScrollView measures its child with an unspecified height; force a
+                    // genuinely long canvas rather than merely setting its LayoutParams.
+                    minimumHeight=8000
                     onStroke={_,layer->result.set(layer)}
                     bind(Page(height=10000f),Tool.Pen,0xff222222.toInt(),3f,false,false,28f)
                 }
@@ -38,8 +41,8 @@ class InkViewportTest {
                 scenario.onActivity {
                     val x=canvas.width/2f;val y=scroller.scrollY+scroller.height/2f+i*12f
                     if(i==0) {
-                        assertTrue("Ink surface must be smaller than the long page",canvas.liveViewportHeight<canvas.height)
-                        assertTrue("Ink surface must follow scrolling",canvas.liveViewportOffset>0f)
+                        assertTrue("Ink surface ${canvas.liveViewportHeight} must be smaller than page ${canvas.height}",canvas.liveViewportHeight<canvas.height)
+                        assertTrue("Ink surface must follow scrolling; scroll=${scroller.scrollY}, offset=${canvas.liveViewportOffset}",canvas.liveViewportOffset>0f)
                         expectedY=canvas.pagePoint(x,y).y
                     }
                     val prop=MotionEvent.PointerProperties().apply {id=0;toolType=MotionEvent.TOOL_TYPE_STYLUS}

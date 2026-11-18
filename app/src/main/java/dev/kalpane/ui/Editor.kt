@@ -75,7 +75,8 @@ import dev.kalpane.ink.NotebookCanvas
     var revealSource by remember(page.id) { mutableStateOf(false) }
     var baseTextHeight by remember(page.id) { mutableStateOf<Float?>(null) }
     var baseLayerHeight by remember(page.id) { mutableStateOf<Float?>(null) }
-    BackHandler { if(inlineValue!=null) {inlineValue=null;editingText=null;keyboard?.hide()} else if(s.focus) vm.focus() else vm.screen("pages") }
+    fun stopTyping() {focusManager.clearFocus();inlineValue=null;editingText=null;keyboard?.hide()}
+    BackHandler { if(inlineValue!=null) stopTyping() else if(s.focus) vm.focus() else vm.screen("pages") }
     var layerMenu by remember { mutableStateOf<Layer?>(null) }
     var rename by remember { mutableStateOf(false) }
     val night=isNight(s.prefs.theme)
@@ -84,20 +85,20 @@ import dev.kalpane.ink.NotebookCanvas
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(vm::importImage) }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
         if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=if(compactHeight) 48.dp else 64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
-            ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Pages") { vm.screen("pages") }
+            ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Pages") {stopTyping();vm.screen("pages")}
             Column(Modifier.weight(1f).clickable {rename=true}.padding(horizontal=8.dp,vertical=8.dp)) {
                 if(!compactHeight) Text(s.notebook?.title.orEmpty(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
                 AnimatedContent(targetState=page.title,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page") {title->Text(title,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)}
             }
-            ActionIcon(Icons.Outlined.Add,"New page") {vm.createPage("")}
-            ActionIcon(Icons.Outlined.Fullscreen,"Enter focus mode") {vm.focus()}
+            ActionIcon(Icons.Outlined.Add,"New page") {stopTyping();vm.createPage("")}
+            ActionIcon(Icons.Outlined.Fullscreen,"Enter focus mode") {stopTyping();vm.focus()}
         }
             Surface(shape=RoundedCornerShape(18.dp),shadowElevation=6.dp,tonalElevation=2.dp,color=MaterialTheme.colorScheme.surfaceContainerHigh,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=4.dp).height(48.dp)) {
-                if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {vm.focus()}
+                if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {stopTyping();vm.focus()}
                 else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
-                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {focusManager.clearFocus();inlineValue=null;editingText=null;keyboard?.hide();vm.tool(Tool.Pen)}
+                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {stopTyping();vm.tool(Tool.Pen)}
                     Box {
-                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {
+                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={stopTyping();vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={stopTyping();eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {
                             val tint=MaterialTheme.colorScheme.onSurfaceVariant
                             Canvas(Modifier.size(22.dp)) {rotate(40f) {val w=size.width;val h=size.height;drawRoundRect(tint,Offset(w*.2f,h*.12f),Size(w*.6f,h*.76f),CornerRadius(w*.1f),style=Stroke(2.dp.toPx()));drawLine(tint,Offset(w*.2f,h*.58f),Offset(w*.8f,h*.58f),2.dp.toPx())}}
                         }
@@ -106,10 +107,10 @@ import dev.kalpane.ink.NotebookCanvas
                             DropdownMenuItem(text={Text("Erase stroke")},onClick={vm.preferences {it.copy(partialEraser=false)};vm.tool(Tool.Eraser);eraserMenu=false})
                         }
                     }
-                    ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
-                    IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
-                    ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
-                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {focusManager.clearFocus();inlineValue=null;editingText=null;keyboard?.hide();more=true}
+                    ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {stopTyping();vm.tool(Tool.Select)}
+                    IconButton({stopTyping();colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
+                    ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {stopTyping();vm.undo()}
+                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {stopTyping();more=true}
                 }
             }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -125,7 +126,7 @@ import dev.kalpane.ink.NotebookCanvas
                 onLayerMenu={layerMenu=it}
                 canvasView=this
             } },update={view->view.apply {
-                onStylusEnd={focusManager.clearFocus();keyboard?.hide();inlineValue=null;editingText=null}
+                onStylusEnd={stopTyping()}
                 onTextEdit={layer,offset->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;revealSource=true;baseTextHeight=null;baseLayerHeight=layer.height;inlineValue=TextFieldValue(layer.text,selection=TextRange(offset.coerceIn(0,layer.text.length)))}}
                 onTextTap={_,_,_,py -> val y=if(page.layers.isEmpty() && page.height<=1500f) 80f else py;val anchor=viewPoint(80f,y);editingText=null;typingStarted=false;revealSource=false;baseTextHeight=null;baseLayerHeight=s.prefs.textSize*1.5f;inlinePosition=androidx.compose.ui.geometry.Offset(anchor.x,anchor.y);pagePosition=androidx.compose.ui.geometry.Offset(80f,y);inlineValue=TextFieldValue("")}
             };view.bind(if(editingText!=null && inlineValue!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize())
@@ -193,12 +194,12 @@ import dev.kalpane.ink.NotebookCanvas
         }
         if(!s.focus && !keyboardVisible) Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             val index=s.notebook!!.pages.indexOfFirst {it.id==page.id}
-            ActionIcon(Icons.Outlined.ChevronLeft,"Previous page",index>0) {vm.turn(-1)}
-            TextButton({thumbnails=true},Modifier.weight(1f)) {
+            ActionIcon(Icons.Outlined.ChevronLeft,"Previous page",index>0) {stopTyping();vm.turn(-1)}
+            TextButton({stopTyping();thumbnails=true},Modifier.weight(1f)) {
                 Text("${index+1} / ${s.notebook!!.pages.size}",style=MaterialTheme.typography.labelMedium)
                 if(!compactHeight) {Spacer(Modifier.width(12.dp)); Text(if(s.saving) "Saving…" else "Saved locally",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             }
-            ActionIcon(Icons.Outlined.ChevronRight,"Next page",index<s.notebook!!.pages.lastIndex) {vm.turn(1)}
+            ActionIcon(Icons.Outlined.ChevronRight,"Next page",index<s.notebook!!.pages.lastIndex) {stopTyping();vm.turn(1)}
         }
     }
     if(more) ModalBottomSheet(onDismissRequest={more=false}) {

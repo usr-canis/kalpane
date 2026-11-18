@@ -49,7 +49,6 @@ class AppFlowTest {
             screenshot.recycle()
         }
         ui.waitUntil(10000) {ViewModelProvider(ui.activity)[NotebookViewModel::class.java].state.value.page?.layers?.any {it.kind==LayerKind.Text && it.text.contains("Voltage = current")} == true}
-        ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("More tools").performClick()
         ui.onNodeWithContentDescription("Redo").assertIsEnabled().performClick()
