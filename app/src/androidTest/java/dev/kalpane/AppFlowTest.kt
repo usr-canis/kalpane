@@ -20,7 +20,7 @@ class AppFlowTest {
         ui.onNodeWithContentDescription("Add text").performClick()
         ui.onRoot().performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
-        ui.onNodeWithText("Done").performClick()
+        ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("More tools").performClick()
         ui.onNodeWithContentDescription("Redo").assertIsEnabled().performClick()

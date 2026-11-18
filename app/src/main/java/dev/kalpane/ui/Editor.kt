@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.kalpane.*
@@ -37,9 +38,9 @@ import dev.kalpane.data.*
 import dev.kalpane.ink.NotebookCanvas
 
 @Composable fun EditorScreen(s: AppState,vm: NotebookViewModel) {
-    BackHandler { if(s.focus) vm.focus() else vm.screen("pages") }
     val page=s.page ?: return
     var more by remember { mutableStateOf(false) }
+    var eraserMenu by remember { mutableStateOf(false) }
     var colors by remember { mutableStateOf(false) }
     var thumbnails by remember { mutableStateOf(false) }
     var canvasView by remember { mutableStateOf<NotebookCanvas?>(null) }
@@ -49,6 +50,9 @@ import dev.kalpane.ink.NotebookCanvas
     val focusRequester=remember { FocusRequester() }
     val keyboard=LocalSoftwareKeyboardController.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
+    var typingStarted by remember { mutableStateOf(false) }
+    BackHandler { if(inlineText!=null) {inlineText=null;editingText=null;keyboard?.hide()} else if(s.focus) vm.focus() else vm.screen("pages") }
+    LaunchedEffect(page.id) {inlineText=null;editingText=null;typingStarted=false}
     var layerMenu by remember { mutableStateOf<Layer?>(null) }
     var rename by remember { mutableStateOf(false) }
     val night=isNight(s.prefs.theme)
@@ -68,6 +72,24 @@ import dev.kalpane.ink.NotebookCanvas
             ActionIcon(Icons.Outlined.Add,"New page") {vm.createPage("")}
             ActionIcon(Icons.Outlined.Fullscreen,"Enter focus mode") {vm.focus()}
         }
+            Surface(shape=RoundedCornerShape(18.dp),shadowElevation=6.dp,tonalElevation=2.dp,color=MaterialTheme.colorScheme.surfaceContainerHigh,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=4.dp).height(48.dp)) {
+                if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {vm.focus()}
+                else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
+                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {inlineText=null;editingText=null;keyboard?.hide();vm.tool(Tool.Pen)}
+                    Box {
+                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {Icon(Icons.Outlined.AutoFixNormal,null,Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
+                        DropdownMenu(expanded=eraserMenu,onDismissRequest={eraserMenu=false}) {
+                            DropdownMenuItem(text={Text("Erase part")},onClick={vm.preferences {it.copy(partialEraser=true)};vm.tool(Tool.PartialEraser);eraserMenu=false})
+                            DropdownMenuItem(text={Text("Erase stroke")},onClick={vm.preferences {it.copy(partialEraser=false)};vm.tool(Tool.Eraser);eraserMenu=false})
+                        }
+                    }
+                    ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
+                    ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
+                    IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
+                    ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
+                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
+                }
+            }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // A single persistent Ink view avoids losing in-flight strokes during Compose recomposition.
             AndroidView(factory={ context -> NotebookCanvas(context,vm.store).apply {
@@ -76,30 +98,19 @@ import dev.kalpane.ink.NotebookCanvas
                 onTurn=vm::turn
                 onLayerMenu={layerMenu=it}
                 canvasView=this
-                onTextTap={x,y,px,py -> editingText=null;inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
-            } },update={it.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().padding(bottom=64.dp).graphicsLayer {alpha=paperAlpha.value})
+                onTextEdit={layer->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;inlineText=layer.text}}
+                onTextTap={x,y,px,py -> editingText=null;typingStarted=false;inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
+            } },update={it.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().graphicsLayer {alpha=paperAlpha.value})
             inlineText?.let { text ->
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(value=text,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
             if(!s.focus) AnimatedContent(targetState=page.id,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page turn",modifier=Modifier.align(Alignment.TopCenter).padding(top=10.dp)) { id ->
                 Text(if(id==page.id) "${s.notebook!!.pages.indexOfFirst { it.id==id }+1}" else "",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.6f))
             }
-            Surface(shape=RoundedCornerShape(18.dp),shadowElevation=6.dp,tonalElevation=2.dp,color=MaterialTheme.colorScheme.surfaceContainerHigh,modifier=Modifier.align(Alignment.BottomCenter).padding(bottom=8.dp).height(48.dp)) {
-                if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {vm.focus()}
-                else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
-                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {vm.tool(Tool.Pen)}
-                    ActionIcon(Icons.Outlined.AutoFixNormal,"Eraser",selected=s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) {more=true}
-                    ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
-                    ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
-                    if(inlineText!=null) TextButton(onClick={val text=inlineText.orEmpty(); val current=vm.state.value.page; val existing=editingText; if(text.isNotBlank() && current!=null) vm.edit(current.copy(layers=if(existing==null) current.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize) else current.layers.map {if(it.id==existing.id) it.copy(text=text) else it}));inlineText=null;editingText=null;keyboard?.hide()}) {Text("Done")}
-                    IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
-                    ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
-                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
-                }
-            }
+
         }
         if(!s.focus) Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             val index=s.notebook!!.pages.indexOfFirst {it.id==page.id}
@@ -140,7 +151,7 @@ import dev.kalpane.ink.NotebookCanvas
     }
     if(colors) ColorPicker(s.penColor,s.prefs.recentColors,{colors=false}) {vm.color(it);colors=false}
     if(rename) NameDialog("Rename page",page.title,{rename=false}) {vm.edit(page.copy(title=it))}
-    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {layer->canvasView?.viewPoint(layer.x,layer.y)?.let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;inlineText=layer.text};layerMenu=null} }
+    layerMenu?.let { chosen -> LayerDialog(page,chosen,{layerMenu=null},vm::edit) {layer->canvasView?.viewPoint(layer.x,layer.y)?.let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;inlineText=layer.text};layerMenu=null} }
 }
 
 @Composable private fun LayerDialog(page: Page, initial: Layer,onDismiss:()->Unit,onEdit:(Page)->Unit,onText:(Layer)->Unit) {

@@ -181,7 +181,8 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 LayerKind.Text -> {
                     textPaint.color = l.color; textPaint.textSize = l.fontSize
                     textPaint.typeface = NoteTypefaces.get(context,l.textFace)
-                    val layout = StaticLayout.Builder.obtain(l.text,0,l.text.length,textPaint,l.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
+                    val display=markdownDisplay(l.text)
+                    val layout = StaticLayout.Builder.obtain(display,0,display.length,textPaint,l.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
                     canvas.save(); canvas.translate(l.x,l.y); layout.draw(canvas); canvas.restore()
                 }
             }
@@ -271,8 +272,12 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP) { if(tool==Tool.PartialEraser && erasePath.isNotEmpty()) {val layers=p.layers.flatMap {if(it.kind==LayerKind.Ink && !it.locked) eraseParts(it,erasePath,18f/(fit*zoom)) else listOf(it)};if(layers!=p.layers) onEdit(p.copy(layers=layers))} else if(erased.isNotEmpty()) onEdit(p.copy(layers=p.layers.filterNot { it.id in erased })); erased.clear(); erasePath.clear(); dry.invalidate() }
             }; return true
         }
-        if(tool==Tool.Text && action==MotionEvent.ACTION_UP) {
-            if(pos.x in 0f..p.width && pos.y in 0f..p.height) onTextTap(e.x,e.y,pos.x,pos.y); return true
+        if((tool==Tool.Text || (tool==Tool.Pen && !isPen && !fingerDrawing)) && action==MotionEvent.ACTION_UP && !touchedMultiple && hypot(e.x-downX,e.y-downY)<ViewConfiguration.get(context).scaledTouchSlop) {
+            if(pos.x in 0f..p.width && pos.y in 0f..p.height) {
+                val text=p.layers.lastOrNull {it.kind==LayerKind.Text && !it.locked && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
+                if(text==null) onTextTap(e.x,e.y,pos.x,pos.y) else onTextEdit(text)
+            }
+            return true
         }
         if(tool==Tool.Select) {
             when(action) {

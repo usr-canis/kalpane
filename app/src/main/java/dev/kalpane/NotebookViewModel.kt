@@ -99,6 +99,12 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
         undo.getOrPut(page.id) { ArrayDeque() }.apply { addLast(before); if(size > 60) removeFirst() }; redo.remove(page.id)
         replace(page.copy(modified = System.currentTimeMillis()))
     }
+    /** Coalesce one typing session into a single undo entry while saving each change. */
+    fun updateTextDuringSession(layer: Layer, firstChange: Boolean) {
+        val page=_state.value.page ?: return
+        val updated=page.copy(layers=if(page.layers.any {it.id==layer.id}) page.layers.map {if(it.id==layer.id) layer else it} else page.layers+layer)
+        if(firstChange) edit(updated) else replace(updated.copy(modified=System.currentTimeMillis()))
+    }
     private fun replace(page: Page) { _state.update { it.copy(workspace = it.workspace.copy(document = it.workspace.document.replace(page))) }; historyState(); persist() }
     fun undo() { val p = _state.value.page ?: return; val previous = undo[p.id]?.removeLastOrNull() ?: return; redo.getOrPut(p.id) { ArrayDeque() }.addLast(p); replace(previous) }
     fun redo() { val p = _state.value.page ?: return; val next = redo[p.id]?.removeLastOrNull() ?: return; undo.getOrPut(p.id) { ArrayDeque() }.addLast(p); replace(next) }

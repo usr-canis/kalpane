@@ -59,6 +59,7 @@ fun hash(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest
     val theme: ThemeMode = ThemeMode.System, val paper: Paper = Paper.Dots,
     val textFace: TextFace = TextFace.Sans, val textSize: Float = 26f,
     val penWidth: Float = 3f, val fingerDrawing: Boolean = false,
+    val partialEraser: Boolean = false,
     val reducedMotion: Boolean = false, val gridSpacing: Float = 28f,
     val recentColors: List<Int> = listOf(0xff252522.toInt(), 0xffE0730C.toInt(), 0xff316a69.toInt(), 0xff5269a3.toInt()),
     val repo: String = "", val branch: String = "main",
