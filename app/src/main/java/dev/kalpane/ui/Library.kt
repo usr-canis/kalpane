@@ -56,12 +56,12 @@ import kotlinx.coroutines.withContext
                 Button({create=true},contentPadding=PaddingValues(24.dp,14.dp)) { Icon(Icons.Outlined.Add,null); Spacer(Modifier.width(8.dp)); Text("Create a notebook") }
             }
         } else {
-            LazyVerticalGrid(columns=GridCells.Adaptive(280.dp),modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(16.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+            LazyVerticalGrid(columns=GridCells.Adaptive(240.dp),modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(16.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
                 items(s.workspace.document.notebooks,key={it.id}) { n ->
                     Card(onClick={vm.openNotebook(n.id)},shape=RoundedCornerShape(20.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
-                        Row(Modifier.heightIn(min=172.dp)) {
-                            Box(Modifier.width(5.dp).height(180.dp).background(Amber))
-                            Column(Modifier.weight(1f).padding(20.dp)) {
+                        Row(Modifier.heightIn(min=136.dp)) {
+                            Box(Modifier.width(4.dp).height(136.dp).background(Amber))
+                            Column(Modifier.weight(1f).padding(16.dp)) {
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Outlined.MenuBook,null,tint=MaterialTheme.colorScheme.primary); Spacer(Modifier.weight(1f)); ActionIcon(Icons.Outlined.MoreHoriz,"Rename ${n.title}") { rename=n } }
                                 Text(n.title,style=MaterialTheme.typography.titleLarge,fontFamily=if(n.title.any { it in '\u0C80'..'\u0CFF' }) Mallige else null,maxLines=2,overflow=TextOverflow.Ellipsis)
                                 Text("${n.pages.size} ${if(n.pages.size==1) "page" else "pages"}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp))

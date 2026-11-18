@@ -270,7 +270,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             }; return true
         }
         if(tool==Tool.Text && action==MotionEvent.ACTION_UP) {
-            onTextTap(e.x,e.y,pos.x,pos.y); return true
+            if(pos.x in 0f..p.width && pos.y in 0f..p.height) onTextTap(e.x,e.y,pos.x,pos.y); return true
         }
         if(tool==Tool.Select) {
             when(action) {

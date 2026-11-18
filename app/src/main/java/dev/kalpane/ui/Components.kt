@@ -23,7 +23,7 @@ import androidx.compose.ui.semantics.contentDescription
 @Composable fun Brand(modifier: Modifier = Modifier, large: Boolean = false) {
     Row(modifier,verticalAlignment = Alignment.CenterVertically,horizontalArrangement = Arrangement.spacedBy(if(large) 16.dp else 8.dp)) {
         Text("ಕಲ್ಪನೆ",fontFamily = Mallige,fontSize = if(large) 50.sp else 32.sp,color = MaterialTheme.colorScheme.onSurface)
-        Image(painterResource(R.drawable.kalpane_logo),"Kalpane feather and scroll",Modifier.size(if(large) 160.dp else 80.dp))
+        Image(painterResource(R.drawable.kalpane_logo),"Kalpane feather and scroll",Modifier.size(if(large) 112.dp else 48.dp))
     }
 }
 @Composable fun ActionIcon(icon: ImageVector, label: String, enabled: Boolean = true, selected: Boolean = false, onClick: () -> Unit) {

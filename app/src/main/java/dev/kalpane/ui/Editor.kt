@@ -13,7 +13,6 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,7 +46,6 @@ import dev.kalpane.ink.NotebookCanvas
     var inlineText by remember { mutableStateOf<String?>(null) }
     var inlinePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var pagePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    val density=LocalDensity.current
     val focusRequester=remember { FocusRequester() }
     val keyboard=LocalSoftwareKeyboardController.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
