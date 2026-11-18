@@ -27,7 +27,7 @@ import java.util.Date
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun SettingsScreen(s: AppState,vm: NotebookViewModel) {
     val back={vm.screen(if(s.page!=null) "editor" else "notebooks")}
-    BackHandler {if(!s.busy) back()}
+    BackHandler {if(!s.switchingWorkspace) back()}
     var repo by remember(s.prefs.repo) {mutableStateOf(s.prefs.repo)}
     // Credentials intentionally use neither rememberSaveable nor ViewModel state.
     var token by remember {mutableStateOf("")}
@@ -37,7 +37,7 @@ import java.util.Date
     val import=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let(vm::importArchive)}
     LaunchedEffect(s.connection) {if(s.connection.startsWith("Verified")) token=""}
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().heightIn(min=72.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Back",!s.busy,onClick=back);Text("Settings",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(start=12.dp))}
+        Row(Modifier.fillMaxWidth().heightIn(min=72.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {ActionIcon(Icons.AutoMirrored.Outlined.ArrowBack,"Back",!s.switchingWorkspace,onClick=back);Text("Settings",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(start=12.dp))}
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.testTag("settings-list").widthIn(max=760.dp).fillMaxWidth().align(Alignment.TopCenter),contentPadding=PaddingValues(horizontal=24.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                 item {

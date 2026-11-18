@@ -125,10 +125,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             if(layer.kind == LayerKind.Image && layer.asset !in bitmaps && loading.add(layer.asset)) {
                 scope.launch {
                     val bitmap = withContext(Dispatchers.IO) { runCatching {
-                        val file = store.asset(layer.asset)
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(file.path,bounds)
-                        val sample = generateSequence(1) { it * 2 }.first { max(bounds.outWidth,bounds.outHeight) / it <= 2048 }
-                        BitmapFactory.decodeFile(file.path,BitmapFactory.Options().apply { inSampleSize = sample })
+                        ImageAssets.decode(store.asset(layer.asset),2048)
                     }.getOrNull() }
                     if(page?.id == p.id && bitmap != null) { bitmaps[layer.asset] = bitmap; dry.invalidate() }
                     loading.remove(layer.asset)
@@ -229,7 +226,11 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         if(penIndices.isNotEmpty()) {
             policy.pen(e.eventTime,!(isPen && (action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP)))
             if(activePointer != null && !activeIsPen) cancelInk(e)
-            draft=null; removeCallbacks(longPress)
+            // A new pen contact supersedes a finger selection. Keep the pen's own
+            // move/resize draft until UP so its final position can be committed.
+            if(isPen && (action==MotionEvent.ACTION_DOWN || action==MotionEvent.ACTION_POINTER_DOWN)) {
+                draft=null; removeCallbacks(longPress)
+            }
         }
         if(action==MotionEvent.ACTION_DOWN) { policy.beginTouch(e.eventTime); touchedMultiple=false; erased.clear(); downX=e.x; downY=e.y; downTime=e.eventTime; lastX=e.x; lastY=e.y }
         if(action==MotionEvent.ACTION_POINTER_DOWN && !isPen) { touchedMultiple=true; if(!activeIsPen) cancelInk(e); draft=null; removeCallbacks(longPress) }

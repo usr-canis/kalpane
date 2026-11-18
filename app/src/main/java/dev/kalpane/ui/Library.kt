@@ -23,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import dev.kalpane.*
 import dev.kalpane.data.*
-import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.StaticLayout
@@ -128,9 +127,7 @@ import kotlinx.coroutines.withContext
             page.layers.filter {it.kind==LayerKind.Image}.mapNotNull {l->
                 runCatching {
                     val file=store?.asset(l.asset) ?: return@runCatching null
-                    val bounds=BitmapFactory.Options().apply {inJustDecodeBounds=true};BitmapFactory.decodeFile(file.path,bounds)
-                    val sample=generateSequence(1) {it*2}.first {maxOf(bounds.outWidth,bounds.outHeight)/it<=320}
-                    BitmapFactory.decodeFile(file.path,BitmapFactory.Options().apply {inSampleSize=sample})?.let {l.asset to it}
+                    l.asset to ImageAssets.decode(file,320)
                 }.getOrNull()
             }.toMap()
         }

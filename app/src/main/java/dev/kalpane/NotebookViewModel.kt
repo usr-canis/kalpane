@@ -1,7 +1,6 @@
 package dev.kalpane
 
 import android.app.Application
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +18,7 @@ data class AppState(
     val screen: String = "notebooks", val tool: Tool = Tool.Pen,
     val penColor: Int = 0xff252522.toInt(), val penWidth: Float = 3f,
     val focus: Boolean = false, val saving: Boolean = false, val busy: Boolean = false,
+    val switchingWorkspace: Boolean = false,
     val message: String? = null, val connection: String = "Not connected", val branches: List<String> = emptyList(),
     val undoAvailable: Boolean = false, val redoAvailable: Boolean = false,
 ) {
@@ -57,7 +57,11 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
     }
     private suspend fun flush() {
         val done = CompletableDeferred<Unit>()
-        writes.send(revision to { val failure = saveFailure; if(failure == null) done.complete(Unit) else done.completeExceptionally(failure) }); done.await()
+        writes.send(revision to {
+            val failure = saveFailure
+            if(failure == null) done.complete(Unit)
+            else { done.completeExceptionally(failure); throw failure }
+        }); done.await()
     }
     fun message(message: String?) { _state.update { it.copy(message = message) } }
     fun screen(screen: String) { _state.update { it.copy(screen = screen) } }
@@ -123,9 +127,8 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
                         val bytes=output.toByteArray()
                         require(bytes.size <= 20 * 1024 * 1024) { "Choose an image smaller than 20 MB." }; bytes
                     } ?: error("Image could not be opened.")
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
-                    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "This image format is not supported." }
-                    store.importAsset(bytes) to (bounds.outHeight.toFloat() / bounds.outWidth)
+                    val size = runCatching {ImageAssets.dimensions(bytes)}.getOrElse {throw IllegalArgumentException("This image format is not supported.",it)}
+                    store.importAsset(bytes) to (size.height.toFloat() / size.width)
                 }
             }.onSuccess { (asset,ratio) ->
                 val p = _state.value.workspace.document.pages().find { it.id == target } ?: return@onSuccess
@@ -169,15 +172,15 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     private fun client(): GitHubBackup { val s = _state.value; return GitHubBackup(s.prefs.repo,vault.get(s.prefs.repo) ?: error("Enter and verify a credential first."),store) }
-    private fun sync(block: suspend () -> Unit) {
+    private fun sync(switchingWorkspace: Boolean = false, block: suspend () -> Unit) {
         if (_state.value.busy) return
-        _state.update { it.copy(busy = true) }
+        _state.update { it.copy(busy = true, switchingWorkspace = switchingWorkspace) }
         viewModelScope.launch {
             try { flush(); block() } catch (e: Exception) { if(e is CancellationException) throw e; _state.update { it.copy(message = e.message,connection = "Action needed") } }
-            finally { _state.update { it.copy(busy = false) } }
+            finally { _state.update { it.copy(busy = false, switchingWorkspace = false) } }
         }
     }
-    fun verify(repoInput: String, tokenInput: String) = sync {
+    fun verify(repoInput: String, tokenInput: String) = sync(switchingWorkspace = true) {
         val repo = repoInput.trim().removePrefix("https://github.com/").removeSuffix("/").removeSuffix(".git")
         val token = tokenInput.trim().ifBlank { withContext(Dispatchers.IO) { vault.get(repo) } ?: error("Enter a fine-grained token scoped to this repository.") }
         val names = withContext(Dispatchers.IO) { GitHubBackup(repo,token,store).verify().also { vault.put(repo,token) } }
@@ -189,6 +192,7 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
             else Workspace(document = s.workspace.document,lastNotebook = s.workspace.lastNotebook,lastPage = s.workspace.lastPage)
         }
         _state.update { it.copy(prefs = it.prefs.copy(repo = repo,branch = branch),workspace = newWorkspace,branches = names,connection = "Verified · private repository",message = "Connected. Pull before your first push.") }; persist()
+        if(repo != s.prefs.repo || branch != s.prefs.branch) {undo.clear();redo.clear();historyState()}
     }
     fun push() = sync {
         val s = _state.value
@@ -201,10 +205,11 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         val merge = Merge.documents(s.workspace.base,s.workspace.document,remote.document)
         val n = merge.document.notebooks.find { it.id == s.workspace.lastNotebook }
-        _state.update { it.copy(workspace = it.workspace.copy(document = merge.document,base = remote.document,remoteHead = remote.head,lastBackup = System.currentTimeMillis(),lastNotebook = n?.id,lastPage = n?.pages?.find { p -> p.id == it.workspace.lastPage }?.id),connection = "Connected",message = if(merge.conflicts == 0) "Pulled and merged. Local edits are preserved." else "${merge.conflicts} conflict(s). Both page versions are kept.") }
+        val lastPage = n?.pages?.find { it.id == s.workspace.lastPage }?.id
+        _state.update { it.copy(workspace = it.workspace.copy(document = merge.document,base = remote.document,remoteHead = remote.head,lastBackup = System.currentTimeMillis(),lastNotebook = n?.id,lastPage = lastPage),screen = if(it.screen == "editor" && lastPage == null) {if(n == null) "notebooks" else "pages"} else it.screen,connection = "Connected",message = if(merge.conflicts == 0) "Pulled and merged. Local edits are preserved." else "${merge.conflicts} conflict(s). Both page versions are kept.") }
         undo.clear(); redo.clear(); historyState(); persist()
     }
-    fun switchBranch(branch: String) = sync {
+    fun switchBranch(branch: String) = sync(switchingWorkspace = true) {
         require(GitHubBackup.validBranch(branch))
         val s = _state.value
         val next = withContext(Dispatchers.IO) {
