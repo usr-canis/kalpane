@@ -12,8 +12,8 @@ android {
         applicationId = "dev.kalpane"
         minSdk = 29
         targetSdk = 36
-        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 1
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.0"
+        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 2
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

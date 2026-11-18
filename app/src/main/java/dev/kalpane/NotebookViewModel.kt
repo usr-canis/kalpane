@@ -11,7 +11,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import java.io.File
 
-enum class Tool { Pen, Eraser, Select, Navigate }
+enum class Tool { Pen, Eraser, Select, Navigate, Text }
 data class AppState(
     val loaded: Boolean = false, val fatalError: String? = null,
     val prefs: Preferences = Preferences(), val workspace: Workspace = Workspace(),

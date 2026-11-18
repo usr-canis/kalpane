@@ -10,6 +10,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -39,6 +44,12 @@ import dev.kalpane.ink.NotebookCanvas
     var colors by remember { mutableStateOf(false) }
     var thumbnails by remember { mutableStateOf(false) }
     var textDialog by remember { mutableStateOf(false) }
+    var inlineText by remember { mutableStateOf<String?>(null) }
+    var inlinePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var pagePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    val density=LocalDensity.current
+    val focusRequester=remember { FocusRequester() }
+    val keyboard=LocalSoftwareKeyboardController.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
     var layerMenu by remember { mutableStateOf<Layer?>(null) }
     var rename by remember { mutableStateOf(false) }
@@ -66,7 +77,17 @@ import dev.kalpane.ink.NotebookCanvas
                 onTurn=vm::turn
                 onLayerMenu={layerMenu=it}
                 onTextEdit={editingText=it;textDialog=true}
+                onTextTap={x,y,px,py -> inlinePosition=androidx.compose.ui.geometry.Offset(x,y);pagePosition=androidx.compose.ui.geometry.Offset(px,py);inlineText=""}
             } },update={it.bind(page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().padding(bottom=64.dp).graphicsLayer {alpha=paperAlpha.value})
+            inlineText?.let { text ->
+                LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
+                Surface(modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp),shape=RoundedCornerShape(8.dp),color=MaterialTheme.colorScheme.surface,shadowElevation=4.dp) {
+                    Column(Modifier.padding(8.dp)) {
+                        BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.fillMaxWidth().focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=MaterialTheme.colorScheme.onSurface),decorationBox={inner->Box {if(text.isEmpty()) Text("Type here…",color=MaterialTheme.colorScheme.onSurfaceVariant);inner()}})
+                        TextButton(onClick={ if(text.isNotBlank()) vm.edit(page.copy(layers=page.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)));inlineText=null;keyboard?.hide() },modifier=Modifier.align(Alignment.End)) {Text("Done")}
+                    }
+                }
+            }
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
             if(!s.focus) AnimatedContent(targetState=page.id,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page turn",modifier=Modifier.align(Alignment.TopCenter).padding(top=10.dp)) { id ->
                 Text(if(id==page.id) "${s.notebook!!.pages.indexOfFirst { it.id==id }+1}" else "",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.6f))
@@ -77,7 +98,7 @@ import dev.kalpane.ink.NotebookCanvas
                     ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {vm.tool(Tool.Pen)}
                     ActionIcon(Icons.Outlined.AutoFixNormal,"Stroke eraser",selected=s.tool==Tool.Eraser) {vm.tool(Tool.Eraser)}
                     ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
-                    ActionIcon(Icons.Outlined.TextFields,"Add text") {editingText=null;textDialog=true}
+                    ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
                     IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
                     ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
                     ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}

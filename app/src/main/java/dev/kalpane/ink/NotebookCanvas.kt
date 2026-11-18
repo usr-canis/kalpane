@@ -29,6 +29,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     var onTurn: (Int) -> Unit = {}
     var onLayerMenu: (Layer) -> Unit = {}
     var onTextEdit: (Layer) -> Unit = {}
+    var onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> }
     internal val hasActiveStroke: Boolean get() = activePointer != null
     var page: Page? = null; private set
     var tool: Tool = Tool.Pen
@@ -267,6 +268,9 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 }
                 if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP) { if(erased.isNotEmpty()) onEdit(p.copy(layers=p.layers.filterNot { it.id in erased })); erased.clear(); dry.invalidate() }
             }; return true
+        }
+        if(tool==Tool.Text && action==MotionEvent.ACTION_UP) {
+            onTextTap(e.x,e.y,pos.x,pos.y); return true
         }
         if(tool==Tool.Select) {
             when(action) {
