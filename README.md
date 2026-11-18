@@ -1,6 +1,6 @@
 # ಕಲ್ಪನೆ · Kalpane
 
-A native Android engineer’s notebook. Kotlin, Jetpack Compose, fixed Material 3 themes, and **stable AndroidX Ink 1.0.0**. Android 10 / API 29 and later; phones, tablets, rotation, and resizable windows.
+Android notebook built with Kotlin, Jetpack Compose, fixed Material 3 themes, and **stable AndroidX Ink 1.0.0**. Android 10 / API 29 and later; phones, tablets, rotation, and resizable windows.
 
 [Download the installable 0.1.0 preview APK](https://github.com/usr-canis/kalpane/releases/download/preview-v0.1.0/kalpane-0.1.0-preview.apk) · [Release notes](https://github.com/usr-canis/kalpane/releases/tag/preview-v0.1.0). This preview is development-signed and uses a separate application ID.
 
@@ -19,12 +19,12 @@ The installable debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The Gr
 
 Create a named notebook, then open its pages. The library always opens first; each notebook offers the last page. Page menus rename and reorder pages. The editor has one 48 dp tool strip, and Focus mode leaves one pen button. Secondary tools and thumbnails open on demand.
 
-- **Pen:** pressure-sensitive vector ink. **Stroke eraser:** remove an entire intersected ink stroke. Undo and redo cover text, ink, image placement, ordering, and page edits.
-- **Text:** add text, then use Select and long-press → Edit text to revise it. Kannada text uses bundled Unicode Mallige.
+- **Pen:** pressure-sensitive vector ink. **Eraser:** tap to use the last mode; long-press to choose whole-stroke or partial erasing. Undo and redo cover text, ink, image placement, ordering, and page edits.
+- **Text:** tap the page with a finger to type. Text saves as you type. Markdown headings, bold, italic, strike-through, links, inline code, fenced code and checkboxes render as formatted text; tap an existing text block to edit its source. A backslash escapes Markdown syntax. Kannada text uses bundled Unicode Mallige.
 - **Images:** More → Import image uses Android Photo Picker. Originals are copied to private app storage before the page references them. Select → drag to move; drag the corner to resize. Long-press for ordering, locking, removal, and numeric position/size controls. The page-objects panel also reaches covered and locked objects.
-- **Navigation:** More → Navigate enables swipe page turns at fit size, and one-finger pan while zoomed. Two-finger pinch and pan work without enabling finger drawing. The page buttons work at every zoom. Page coordinates do not change with viewport size.
+- **Navigation:** scroll the page with a finger. More → Navigate enables swipe page turns at fit size and one-finger pan while zoomed. Two-finger pinch and pan work without enabling finger drawing. The page buttons work at every zoom. Page coordinates do not change with viewport size.
 - **Input:** pen-only is the default. Enable finger drawing explicitly. Touch is suppressed while the pen is active and for 700 ms afterwards; a touch sequence contaminated by pen activity remains blocked. Android `ACTION_CANCEL` and `FLAG_CANCELED` discard the stroke. Hover supplies a cursor when reported by the hardware.
-- **Settings:** System / Light / Dark, paper, grid spacing, default pen width, input, reduced motion, and GitHub backup. Dynamic wallpaper colors are deliberately disabled. Light paper is `#FBF9F4`; amber `#E0730C` is the brand accent, with darker accessible control text.
+- **Settings:** System / Light / Dark, paper, grid spacing, default pen width, input, reduced motion, and Git remote. Dynamic wallpaper colors are deliberately disabled. Light paper is `#FBF9F4`; amber `#E0730C` is the brand accent, with darker accessible control text.
 
 ## Offline storage and backup
 

@@ -30,7 +30,7 @@ class AppFlowTest {
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
         // A finger tap starts typing even while the pen is the active tool.
-        ui.onRoot().performTouchInput { click(center) }
+        ui.onNodeWithTag("document-scroll").performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
         ui.onNodeWithText("Done").assertDoesNotExist()
         ui.onNodeWithContentDescription("Eraser").assertIsDisplayed()
@@ -86,13 +86,13 @@ class AppFlowTest {
         ui.onNodeWithText("Name").performTextInput("Pages ${System.nanoTime()}")
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
-        ui.onRoot().performTouchInput {click(center)}
+        ui.onNodeWithTag("document-scroll").performTouchInput {click(center)}
         ui.onNode(hasSetTextAction()).performTextInput("First page")
         ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("New page").performClick()
         val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
         ui.waitUntil(5000) {model.state.value.notebook?.pages?.size==2}
-        ui.onRoot().performTouchInput {click(center)}
+        ui.onNodeWithTag("document-scroll").performTouchInput {click(center)}
         ui.onNode(hasSetTextAction()).performTextInput("Second page")
         ui.waitUntil(5000) {model.state.value.page?.layers?.any {it.text=="Second page"}==true}
         val pages=model.state.value.notebook!!.pages
@@ -117,7 +117,7 @@ class AppFlowTest {
         ui.onNodeWithText("Name").performTextInput("Mixed input ${System.nanoTime()}")
         ui.onNodeWithText("Save").performClick()
         ui.onNodeWithContentDescription("Continue last page").performClick()
-        ui.onRoot().performTouchInput {click(center)}
+        ui.onNodeWithTag("document-scroll").performTouchInput {click(center)}
         ui.onNode(hasSetTextAction()).performTextInput("Text and ink")
         ui.waitForIdle()
         val bounds=ui.onNode(hasSetTextAction()).fetchSemanticsNode().boundsInRoot
