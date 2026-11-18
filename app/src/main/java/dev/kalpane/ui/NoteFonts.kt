@@ -11,17 +11,17 @@ import androidx.compose.ui.text.font.FontFamily
 import dev.kalpane.R
 import dev.kalpane.data.TextFace
 
-fun TextFace.displayName() = when(this) {TextFace.Sans->"System sans";TextFace.Serif->"Source Serif 4";TextFace.Monospace->"JetBrains Mono"}
+fun TextFace.displayName() = when(this) {TextFace.Sans->"Roboto";TextFace.Serif->"Source Serif 4";TextFace.Monospace->"JetBrains Mono"}
 object NoteTypefaces {
     private val cache=mutableMapOf<TextFace,Typeface>()
     @Synchronized fun get(context: Context,face: TextFace): Typeface = cache.getOrPut(face) {
         val kannada=AndroidFontFamily.Builder(Font.Builder(context.resources,R.font.mallige).build()).build()
         val primary=when(face) {
-            TextFace.Sans->kannada
+            TextFace.Sans->AndroidFontFamily.Builder(Font.Builder(context.resources,R.font.roboto).build()).build()
             TextFace.Serif->AndroidFontFamily.Builder(Font.Builder(context.resources,R.font.source_serif).build()).build()
             TextFace.Monospace->AndroidFontFamily.Builder(Font.Builder(context.resources,R.font.jetbrains_mono).build()).build()
         }
-        Typeface.CustomFallbackBuilder(primary).apply {if(face!=TextFace.Sans) addCustomFallback(kannada)}
+        Typeface.CustomFallbackBuilder(primary).apply {addCustomFallback(kannada)}
             .setSystemFallback(when(face){TextFace.Sans->"sans-serif";TextFace.Serif->"serif";TextFace.Monospace->"monospace"}).build()
     }
 }

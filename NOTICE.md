@@ -2,10 +2,10 @@
 
 Mallige Kannada: © 2005 Indian Institute of Science, Bangalore. Distributed under the GNU General Public License, as recorded in the font's name table. Unmodified Unicode Kannada font obtained from https://github.com/OnHighEngineer/kannada-fonts/blob/main/fonts/unicode/classical-display/Mallige%20Normal.ttf. GPL text is included in LICENSE. This is Kannada Mallige, not the similarly named Tulu font.
 
-The feather-and-scroll logo was supplied by the repository owner. The included transparent square was prepared from that reference using image editing; retain owner rights to the artwork. Review against the original before a production brand release.
+The current feather-and-book mark was generated for Kalpane at the repository owner's request. The earlier feather-and-scroll artwork was supplied by the repository owner.
 
 AndroidX and Material Components are licensed under Apache 2.0. Kotlin is licensed under Apache 2.0. OkHttp is licensed under Apache 2.0.
 
-Source Serif 4 (Adobe) and JetBrains Mono (JetBrains) are bundled unmodified under the SIL Open Font License 1.1. See docs/SourceSerif4-OFL.txt and docs/JetBrainsMono-OFL.txt. Fonts were obtained from the Google Fonts repository.
+Roboto (Google), Source Serif 4 (Adobe), and JetBrains Mono (JetBrains) are bundled unmodified under the SIL Open Font License 1.1. See docs/Roboto-OFL.txt, docs/SourceSerif4-OFL.txt, and docs/JetBrainsMono-OFL.txt. Fonts were obtained from the Google Fonts repository.
 
 A small subset of Material icons is vendored from AndroidX Compose material-icons-extended 1.7.8 to avoid packaging and processing the entire icon catalog. Original Apache 2.0 copyright headers are retained in each source file under app/src/main/java/androidx/compose/material/icons/.
