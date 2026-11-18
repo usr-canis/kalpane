@@ -43,7 +43,7 @@ import kotlinx.coroutines.withContext
             Brand(Modifier.weight(1f)); ActionIcon(Icons.Outlined.Search,"Search notebooks and pages") {search=true}; ActionIcon(Icons.Outlined.Settings,"Settings") { vm.screen("settings") }
         }
         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(28.dp)); SectionLabel("The engineer’s notebook")
+        Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth().padding(top=8.dp,bottom=24.dp),verticalAlignment=Alignment.CenterVertically) {
             Text("Your notebooks",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Medium,modifier=Modifier.weight(1f))
             FilledTonalIconButton({create=true},Modifier.size(48.dp)) { Icon(Icons.Outlined.Add,"New notebook") }
@@ -51,8 +51,8 @@ import kotlinx.coroutines.withContext
         if(s.workspace.document.notebooks.isEmpty()) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
                 Surface(shape=RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surfaceContainer,modifier=Modifier.size(112.dp)) { Box(contentAlignment=Alignment.Center) { Icon(Icons.Outlined.AutoStories,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.primary) } }
-                Spacer(Modifier.height(28.dp)); Text("Make room for an idea.",style=MaterialTheme.typography.headlineSmall)
-                Text("Sketch a circuit. Work through a proof.\nKeep the thought that started it all.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=12.dp,bottom=28.dp),textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(28.dp)); Text("No notebooks yet",style=MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(24.dp))
                 Button({create=true},contentPadding=PaddingValues(24.dp,14.dp)) { Icon(Icons.Outlined.Add,null); Spacer(Modifier.width(8.dp)); Text("Create a notebook") }
             }
         } else {
@@ -159,11 +159,11 @@ import kotlinx.coroutines.withContext
             matches
         }.take(80)
     }
-    AlertDialog(onDismissRequest=onDismiss,title={Text("Find a thought")},text={Column {
+    AlertDialog(onDismissRequest=onDismiss,title={Text("Search")},text={Column {
         OutlinedTextField(query,{query=it},label={Text("Search titles and text")},singleLine=true,modifier=Modifier.fillMaxWidth())
         androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max=360.dp)) {
             items(results.size) {i->val result=results[i];ListItem(headlineContent={Text(result.title)},supportingContent={Text(result.detail)},modifier=Modifier.clickable {onOpen(result.notebookId,result.pageId)})}
-            if(query.isNotBlank() && results.isEmpty()) item {Text("No matching thoughts yet.",Modifier.padding(vertical=20.dp),style=MaterialTheme.typography.bodyMedium)}
+            if(query.isNotBlank() && results.isEmpty()) item {Text("No results.",Modifier.padding(vertical=20.dp),style=MaterialTheme.typography.bodyMedium)}
         }
     }},confirmButton={TextButton(onDismiss){Text("Close")}})
 }

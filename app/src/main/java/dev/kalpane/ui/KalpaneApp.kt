@@ -35,7 +35,7 @@ import kotlinx.coroutines.delay
         Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
             if(!s.loaded || !launched) {
                 Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-                    Brand(large=true); Spacer(Modifier.height(20.dp)); Text("A place for your thinking.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Brand(large=true)
                 }
             } else if(s.fatalError!=null) {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().padding(32.dp),verticalArrangement=Arrangement.Center) { Text("Your files are preserved",style=MaterialTheme.typography.headlineSmall); Spacer(Modifier.height(16.dp)); Text(s.fatalError!!) }

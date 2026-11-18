@@ -66,6 +66,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     private var touchedMultiple = false
     private var lastFocusX=0f; private var lastFocusY=0f
     private var erased = mutableSetOf<String>()
+    private val erasePath = mutableListOf<Pair<Float,Float>>()
     private var hoverX: Float? = null; private var hoverY: Float? = null
     private val longPress = Runnable { if(draft == null && activePointer == null) page?.layers?.find { it.id == selected }?.let(onLayerMenu) }
     private val scale = ScaleGestureDetector(context,object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -214,7 +215,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         val penIndices=(0 until e.pointerCount).filter { e.getToolType(it) == MotionEvent.TOOL_TYPE_STYLUS || e.getToolType(it) == MotionEvent.TOOL_TYPE_ERASER }
         val isPen=index in penIndices
         if(action==MotionEvent.ACTION_CANCEL) {
-            cancelInk(e); policy.cancelled(); policy.pen(e.eventTime,false); draft=null; erased.clear(); removeCallbacks(longPress); dry.invalidate(); return true
+            cancelInk(e); policy.cancelled(); policy.pen(e.eventTime,false); draft=null; erased.clear(); erasePath.clear(); removeCallbacks(longPress); dry.invalidate(); return true
         }
         if(e.flags and MotionEvent.FLAG_CANCELED != 0) {
             // A rejected palm can carry FLAG_CANCELED on POINTER_UP while the pen stays down.
@@ -231,7 +232,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 draft=null; removeCallbacks(longPress)
             }
         }
-        if(action==MotionEvent.ACTION_DOWN) { policy.beginTouch(e.eventTime); touchedMultiple=false; erased.clear(); downX=e.x; downY=e.y; downTime=e.eventTime; lastX=e.x; lastY=e.y }
+        if(action==MotionEvent.ACTION_DOWN) { policy.beginTouch(e.eventTime); touchedMultiple=false; erased.clear(); erasePath.clear(); downX=e.x; downY=e.y; downTime=e.eventTime; lastX=e.x; lastY=e.y }
         if(action==MotionEvent.ACTION_POINTER_DOWN && !isPen) { touchedMultiple=true; if(!activeIsPen) cancelInk(e); draft=null; removeCallbacks(longPress) }
         val active=activePointer
         if(active!=null) {
@@ -261,12 +262,12 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             lastX=e.x; lastY=e.y; return true
         }
         val pos=point(e.getX(index),e.getY(index)); val p=page ?: return true
-        if(tool==Tool.Eraser || e.getToolType(index)==MotionEvent.TOOL_TYPE_ERASER) {
+        if(tool==Tool.Eraser || tool==Tool.PartialEraser || e.getToolType(index)==MotionEvent.TOOL_TYPE_ERASER) {
             if(isPen || fingerDrawing) {
                 if(action==MotionEvent.ACTION_DOWN || action==MotionEvent.ACTION_POINTER_DOWN || action==MotionEvent.ACTION_MOVE) {
-                    p.layers.filter { it.kind==LayerKind.Ink && !it.locked && hitsInk(it,pos,18f/(fit*zoom)) }.forEach { erased+=it.id }; dry.invalidate()
+                    if(tool==Tool.PartialEraser) erasePath+=pos.x to pos.y else p.layers.filter { it.kind==LayerKind.Ink && !it.locked && hitsInk(it,pos,18f/(fit*zoom)) }.forEach { erased+=it.id }; dry.invalidate()
                 }
-                if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP) { if(erased.isNotEmpty()) onEdit(p.copy(layers=p.layers.filterNot { it.id in erased })); erased.clear(); dry.invalidate() }
+                if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP) { if(tool==Tool.PartialEraser && erasePath.isNotEmpty()) {val layers=p.layers.flatMap {if(it.kind==LayerKind.Ink && !it.locked) eraseParts(it,erasePath,18f/(fit*zoom)) else listOf(it)};if(layers!=p.layers) onEdit(p.copy(layers=layers))} else if(erased.isNotEmpty()) onEdit(p.copy(layers=p.layers.filterNot { it.id in erased })); erased.clear(); erasePath.clear(); dry.invalidate() }
             }; return true
         }
         if(tool==Tool.Text && action==MotionEvent.ACTION_UP) {

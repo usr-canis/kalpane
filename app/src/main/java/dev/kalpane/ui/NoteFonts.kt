@@ -11,7 +11,7 @@ import androidx.compose.ui.text.font.FontFamily
 import dev.kalpane.R
 import dev.kalpane.data.TextFace
 
-fun TextFace.displayName() = when(this) {TextFace.Sans->"System sans · clean & familiar";TextFace.Serif->"Source Serif 4 · thoughtful & literary";TextFace.Monospace->"JetBrains Mono · made for technical notes"}
+fun TextFace.displayName() = when(this) {TextFace.Sans->"System sans";TextFace.Serif->"Source Serif 4";TextFace.Monospace->"JetBrains Mono"}
 object NoteTypefaces {
     private val cache=mutableMapOf<TextFace,Typeface>()
     @Synchronized fun get(context: Context,face: TextFace): Typeface = cache.getOrPut(face) {

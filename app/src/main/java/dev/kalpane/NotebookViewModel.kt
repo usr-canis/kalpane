@@ -11,7 +11,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import java.io.File
 
-enum class Tool { Pen, Eraser, Select, Navigate, Text }
+enum class Tool { Pen, Eraser, PartialEraser, Select, Navigate, Text }
 data class AppState(
     val loaded: Boolean = false, val fatalError: String? = null,
     val prefs: Preferences = Preferences(), val workspace: Workspace = Workspace(),
@@ -73,7 +73,7 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun preferences(transform: (Preferences) -> Preferences) { _state.update { it.copy(prefs = transform(it.prefs)) }; persist() }
     fun createNotebook(name: String) {
-        val n = Notebook(title = name.trim().ifBlank { "Untitled notebook" },pages = listOf(Page(title = "First thoughts",paper = _state.value.prefs.paper)))
+        val n = Notebook(title = name.trim().ifBlank { "Untitled notebook" },pages = listOf(Page(title = "Page 1",paper = _state.value.prefs.paper)))
         _state.update { it.copy(workspace = it.workspace.copy(document = it.workspace.document.copy(notebooks = it.workspace.document.notebooks + n),lastNotebook = n.id,lastPage = n.pages.first().id),screen = "pages") }; persist()
     }
     fun renameNotebook(id: String, name: String) {
@@ -197,7 +197,7 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
     fun push() = sync {
         val s = _state.value
         val newHead = withContext(Dispatchers.IO) { client().push(s.prefs.branch,s.workspace) }
-        _state.update { it.copy(workspace = it.workspace.copy(base = s.workspace.document,remoteHead = newHead,lastBackup = System.currentTimeMillis()),connection = "Connected",message = "Backup pushed. Any newer edits remain pending.") }; persist()
+        _state.update { it.copy(workspace = it.workspace.copy(base = s.workspace.document,remoteHead = newHead,lastBackup = System.currentTimeMillis()),connection = "Connected",message = "Push complete. Newer edits remain pending.") }; persist()
     }
     fun pull() = sync {
         val branch = _state.value.prefs.branch

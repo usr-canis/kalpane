@@ -71,9 +71,9 @@ class LayoutCaptureTest {
             ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Text & typography"))
             ui.onNodeWithText("Text & typography").performScrollTo()
             ui.onNodeWithText("Serif").performClick()
-            ui.onNodeWithText("Ideas take shape.\nV = I × R").performScrollTo();capture("04-serif-settings")
+            ui.onNodeWithText("The quick brown fox jumps over the lazy dog").performScrollTo();capture("04-serif-settings")
             ui.onNodeWithText("Monospace").performScrollTo().performClick()
-            ui.onNodeWithText("Ideas take shape.\nV = I × R").performScrollTo();capture("05-monospace-settings")
+            ui.onNodeWithText("The quick brown fox jumps over the lazy dog").performScrollTo();capture("05-monospace-settings")
             ui.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Pen-only mode"))
             ui.onNodeWithContentDescription("Pen-only mode").performScrollTo().assertIsToggleable()
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("editor");it.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}

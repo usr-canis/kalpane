@@ -65,6 +65,7 @@ import dev.kalpane.ink.NotebookCanvas
                 Text(s.notebook?.title.orEmpty().uppercase(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
                 Text(page.title,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
             }
+            ActionIcon(Icons.Outlined.Add,"New page") {vm.createPage("")}
             ActionIcon(Icons.Outlined.Fullscreen,"Enter focus mode") {vm.focus()}
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -79,13 +80,9 @@ import dev.kalpane.ink.NotebookCanvas
             } },update={it.bind(page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().padding(bottom=64.dp).graphicsLayer {alpha=paperAlpha.value})
             inlineText?.let { text ->
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
-                Surface(modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp),shape=RoundedCornerShape(8.dp),color=MaterialTheme.colorScheme.surface,shadowElevation=4.dp) {
-                    Column(Modifier.padding(8.dp)) {
-                        BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.fillMaxWidth().focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=MaterialTheme.colorScheme.onSurface),decorationBox={inner->Box {if(text.isEmpty()) Text("Type here…",color=MaterialTheme.colorScheme.onSurfaceVariant);inner()}})
-                        TextButton(onClick={ if(text.isNotBlank()) vm.edit(page.copy(layers=page.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)));inlineText=null;keyboard?.hide() },modifier=Modifier.align(Alignment.End)) {Text("Done")}
-                    }
-                }
+                BasicTextField(value=text,onValueChange={inlineText=it},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.widthIn(min=160.dp,max=280.dp).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontFamily=noteFont(s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
+
             // A short title crossfade signals page changes without animating low-latency ink surfaces.
             if(!s.focus) AnimatedContent(targetState=page.id,transitionSpec={fadeIn(tween(if(s.prefs.reducedMotion) 0 else 150)) togetherWith fadeOut(tween(if(s.prefs.reducedMotion) 0 else 100))},label="Page turn",modifier=Modifier.align(Alignment.TopCenter).padding(top=10.dp)) { id ->
                 Text(if(id==page.id) "${s.notebook!!.pages.indexOfFirst { it.id==id }+1}" else "",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.6f))
@@ -94,9 +91,10 @@ import dev.kalpane.ink.NotebookCanvas
                 if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {vm.focus()}
                 else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
                     ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {vm.tool(Tool.Pen)}
-                    ActionIcon(Icons.Outlined.AutoFixNormal,"Stroke eraser",selected=s.tool==Tool.Eraser) {vm.tool(Tool.Eraser)}
+                    ActionIcon(Icons.Outlined.AutoFixNormal,"Eraser",selected=s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) {more=true}
                     ActionIcon(Icons.Outlined.NearMe,"Select and move objects",selected=s.tool==Tool.Select) {vm.tool(Tool.Select)}
                     ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
+                    if(inlineText!=null) TextButton(onClick={val text=inlineText.orEmpty(); val current=vm.state.value.page; if(text.isNotBlank() && current!=null) vm.edit(current.copy(layers=current.layers+Layer(kind=LayerKind.Text,text=text,x=pagePosition.x,y=pagePosition.y,color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize)));inlineText=null;keyboard?.hide()}) {Text("Done")}
                     IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
                     ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
                     ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
@@ -116,6 +114,7 @@ import dev.kalpane.ink.NotebookCanvas
     if(more) ModalBottomSheet(onDismissRequest={more=false}) {
         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.padding(horizontal=24.dp),verticalAlignment=Alignment.CenterVertically) { Text("Your tools",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f)); ActionIcon(Icons.AutoMirrored.Outlined.Redo,"Redo",s.redoAvailable) {vm.redo()} }
+            Row(Modifier.padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) { FilterChip(s.tool==Tool.Eraser,{vm.tool(Tool.Eraser);more=false},label={Text("Erase stroke")}); FilterChip(s.tool==Tool.PartialEraser,{vm.tool(Tool.PartialEraser);more=false},label={Text("Erase part")}) }
             Text("Pen width · ${"%.1f".format(s.penWidth)}",Modifier.padding(start=24.dp,top=12.dp),style=MaterialTheme.typography.labelLarge)
             Slider(s.penWidth,vm::width,valueRange=1f..18f,modifier=Modifier.padding(horizontal=24.dp).semantics {contentDescription="Pen width"})
             Row(Modifier.padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf(1f,3f,6f,12f).forEach {w-> FilterChip(s.penWidth==w,{vm.width(w)},label={Text("${w.toInt()}")}) } }

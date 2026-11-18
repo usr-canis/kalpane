@@ -41,7 +41,7 @@ import java.util.Date
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.testTag("settings-list").widthIn(max=760.dp).fillMaxWidth().align(Alignment.TopCenter),contentPadding=PaddingValues(horizontal=24.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                 item {
-                    SectionLabel("Make it yours")
+
                     Text("Appearance",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(top=8.dp,bottom=12.dp))
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {ThemeMode.entries.forEach {m->FilterChip(s.prefs.theme==m,{vm.preferences {it.copy(theme=m)}},label={Text(m.name)})}}
                     Text("Fixed colors, independent of your wallpaper. Paper stays cream so every saved ink color remains faithful.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -53,7 +53,7 @@ import java.util.Date
                     Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().padding(vertical=12.dp)) {
                         Column(Modifier.padding(20.dp)) {
                             Text(s.prefs.textFace.displayName(),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Ideas take shape.\nV = I × R",fontFamily=noteFont(s.prefs.textFace),fontSize=22.sp,modifier=Modifier.padding(top=10.dp))
+                            Text("The quick brown fox jumps over the lazy dog",fontFamily=noteFont(s.prefs.textFace),fontSize=22.sp,modifier=Modifier.padding(top=10.dp))
                             Text("ಕಲ್ಪನೆ",fontFamily=Mallige,fontSize=26.sp,modifier=Modifier.padding(top=8.dp))
                         }
                     }
@@ -87,21 +87,21 @@ import java.util.Date
                     }
                 }
                 item {
-                    HorizontalDivider();Spacer(Modifier.height(24.dp));SectionLabel("Your backup, your repository")
-                    Row(Modifier.padding(top=8.dp,bottom=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {Icon(Icons.Outlined.CloudSync,null,tint=MaterialTheme.colorScheme.primary);Text("GitHub backup",style=MaterialTheme.typography.titleLarge)}
+                    HorizontalDivider();Spacer(Modifier.height(24.dp));
+                    Row(Modifier.padding(top=8.dp,bottom=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {Icon(Icons.Outlined.CloudSync,null,tint=MaterialTheme.colorScheme.primary);Text("Git remote",style=MaterialTheme.typography.titleLarge)}
                     Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainer,modifier=Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                             Text(s.connection,style=MaterialTheme.typography.titleSmall,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
                             Text("Branch · ${s.prefs.branch}",style=MaterialTheme.typography.bodyMedium)
                             Text(if(s.workspace.pending) "${s.workspace.pendingPages} changed pages · pending edits" else "No pending edits",style=MaterialTheme.typography.bodyMedium)
-                            Text("Last successful backup · ${s.workspace.lastBackup?.let {DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(it))} ?: "Never"}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Last successful sync · ${s.workspace.lastBackup?.let {DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(it))} ?: "Never"}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Spacer(Modifier.height(16.dp))
                     OutlinedTextField(repo,{repo=it},label={Text("Private repository")},placeholder={Text("owner/repository")},singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(token,{token=it},label={Text("Repository-scoped token")},supportingText={Text("Fine-grained token · Contents: read and write. Leave blank to use the stored credential.")},visualTransformation=PasswordVisualTransformation(),singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
-                    Text("Encrypted with an Android Keystore-backed key. Credentials never enter your backup.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp,bottom=12.dp))
+                    Text("Encrypted with an Android Keystore-backed key. Credentials are excluded from the remote.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp,bottom=12.dp))
                     Button({vm.verify(repo,token)},enabled=!s.busy && repo.isNotBlank()) {Text("Verify connection")}
                     if(s.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical=12.dp))
                     Spacer(Modifier.height(12.dp))
@@ -117,7 +117,7 @@ import java.util.Date
                     Text("Unsynced edits stay with their branch. New branches start at the remote head.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp))
                     TextButton(vm::forgetCredential,enabled=!s.busy && s.prefs.repo.isNotBlank()) {Text("Remove stored credential")}
                 }
-                item {HorizontalDivider();Spacer(Modifier.height(16.dp));Brand();Text("Kalpane ${BuildConfig.VERSION_NAME} · Built for the thinking in between.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(24.dp))}
+                item {HorizontalDivider();Spacer(Modifier.height(16.dp));Brand();Text("Kalpane ${BuildConfig.VERSION_NAME}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(24.dp))}
             }
         }
     }

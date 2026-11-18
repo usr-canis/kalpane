@@ -44,8 +44,8 @@ class AppFlowTest {
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()
         ui.onNodeWithText("Appearance").assertIsDisplayed()
-        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("GitHub backup"))
-        ui.onNodeWithText("GitHub backup").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Git remote"))
+        ui.onNodeWithText("Git remote").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Private repository"))
         ui.onNodeWithText("Private repository").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Create branch"))
