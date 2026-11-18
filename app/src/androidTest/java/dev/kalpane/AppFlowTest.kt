@@ -3,6 +3,8 @@ package dev.kalpane
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.ViewModelProvider
+import dev.kalpane.data.LayerKind
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +22,8 @@ class AppFlowTest {
         ui.onNodeWithContentDescription("Add text").performClick()
         ui.onRoot().performTouchInput { click(center) }
         ui.onNode(hasSetTextAction()).performTextInput("Voltage = current × resistance")
+        ui.onNodeWithText("Done").assertDoesNotExist()
+        ui.waitUntil(10000) {ViewModelProvider(ui.activity)[NotebookViewModel::class.java].state.value.page?.layers?.any {it.kind==LayerKind.Text && it.text.contains("Voltage = current")} == true}
         ui.onNodeWithContentDescription("Pen").performClick()
         ui.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("More tools").performClick()

@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -49,6 +50,7 @@ import dev.kalpane.ink.NotebookCanvas
     var pagePosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val focusRequester=remember { FocusRequester() }
     val keyboard=LocalSoftwareKeyboardController.current
+    val focusManager=LocalFocusManager.current
     var editingText by remember { mutableStateOf<Layer?>(null) }
     var typingStarted by remember { mutableStateOf(false) }
     BackHandler { if(inlineText!=null) {inlineText=null;editingText=null;keyboard?.hide()} else if(s.focus) vm.focus() else vm.screen("pages") }
@@ -75,7 +77,7 @@ import dev.kalpane.ink.NotebookCanvas
             Surface(shape=RoundedCornerShape(18.dp),shadowElevation=6.dp,tonalElevation=2.dp,color=MaterialTheme.colorScheme.surfaceContainerHigh,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=4.dp).height(48.dp)) {
                 if(s.focus) ActionIcon(Icons.Outlined.Edit,"Expand tools and exit focus mode",selected=true) {vm.focus()}
                 else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically) {
-                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {inlineText=null;editingText=null;keyboard?.hide();vm.tool(Tool.Pen)}
+                    ActionIcon(Icons.Outlined.Edit,"Pen",selected=s.tool==Tool.Pen) {focusManager.clearFocus();inlineText=null;editingText=null;keyboard?.hide();vm.tool(Tool.Pen)}
                     Box {
                         Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(s.tool==Tool.Eraser || s.tool==Tool.PartialEraser) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier).combinedClickable(role=Role.Button,onClickLabel="Eraser",onLongClickLabel="Choose eraser mode",onClick={vm.tool(if(s.prefs.partialEraser) Tool.PartialEraser else Tool.Eraser)},onLongClick={eraserMenu=true}).semantics {contentDescription="Eraser"},contentAlignment=Alignment.Center) {Icon(Icons.Outlined.AutoFixNormal,null,Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
                         DropdownMenu(expanded=eraserMenu,onDismissRequest={eraserMenu=false}) {
@@ -87,7 +89,7 @@ import dev.kalpane.ink.NotebookCanvas
                     ActionIcon(Icons.Outlined.TextFields,"Add text",selected=s.tool==Tool.Text) {vm.tool(Tool.Text);vm.message("Tap the page to type") }
                     IconButton({colors=true},Modifier.size(48.dp)) { Box(Modifier.size(22.dp).clip(CircleShape).background(Color(s.penColor)).border(1.dp,MaterialTheme.colorScheme.outline,CircleShape).semantics {contentDescription="Ink color picker"}) }
                     ActionIcon(Icons.AutoMirrored.Outlined.Undo,"Undo",s.undoAvailable) {vm.undo()}
-                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {more=true}
+                    ActionIcon(Icons.Outlined.MoreHoriz,"More tools") {focusManager.clearFocus();inlineText=null;editingText=null;keyboard?.hide();more=true}
                 }
             }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
