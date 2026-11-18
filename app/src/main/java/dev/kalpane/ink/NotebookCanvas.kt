@@ -29,6 +29,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     var onTurn: (Int) -> Unit = {}
     var onLayerMenu: (Layer) -> Unit = {}
     var onTextEdit: (Layer) -> Unit = {}
+    var onStylusEnd: () -> Unit = {}
     var onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> }
     internal val hasActiveStroke: Boolean get() = activePointer != null
     var page: Page? = null; private set
@@ -217,6 +218,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         val action=e.actionMasked; val index=e.actionIndex; val pointer=e.getPointerId(index)
         val penIndices=(0 until e.pointerCount).filter { e.getToolType(it) == MotionEvent.TOOL_TYPE_STYLUS || e.getToolType(it) == MotionEvent.TOOL_TYPE_ERASER }
         val isPen=index in penIndices
+        if(isPen && (action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP || action==MotionEvent.ACTION_CANCEL)) onStylusEnd()
         if(action==MotionEvent.ACTION_CANCEL) {
             cancelInk(e); policy.cancelled(); policy.pen(e.eventTime,false); draft=null; erased.clear(); erasePath.clear(); removeCallbacks(longPress); dry.invalidate(); return true
         }

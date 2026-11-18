@@ -25,4 +25,17 @@ class MarkdownProjectionTest {
             assertEquals(source,expected,projected.text)
         }
     }
+    @Test fun incompleteMarkupNeverProducesInvalidCursorMappings() {
+        val random=kotlin.random.Random(42)
+        val alphabet="ab #*~`[]()\\\n-x"
+        repeat(1000) {
+            val source=buildString {repeat(random.nextInt(0,100)) {append(alphabet[random.nextInt(alphabet.length)])}}
+            val p=projectMarkdown(source)
+            val expected=Markdown.parse(source).joinToString("\n") {block->(block.checked?.let {if(it) "☑ " else "☐ "} ?: "")+block.text}
+            assertEquals(source,expected,p.text)
+            assertEquals(p.text.length+1,p.toSource.size)
+            assertTrue(p.toVisual.toList().zipWithNext().all {(a,b)->a<=b})
+            assertTrue(p.toSource.toList().zipWithNext().all {(a,b)->a<=b})
+        }
+    }
 }

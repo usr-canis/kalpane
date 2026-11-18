@@ -7,9 +7,14 @@ import androidx.lifecycle.ViewModelProvider
 import dev.kalpane.data.LayerKind
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import java.io.File
 import org.junit.Assert.assertTrue
 import androidx.core.view.WindowInsetsCompat
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,6 +98,41 @@ class AppFlowTest {
         val pages=model.state.value.notebook!!.pages
         assertTrue(pages[0].layers.any {it.text=="First page"})
         assertTrue(pages[1].layers.any {it.text=="Second page"})
+    }
+    @Test fun fingerSwipeScrollsPaperWithoutCreatingInk() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Scroll ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
+        ui.onNodeWithTag("document-scroll").performTouchInput {swipeUp()}
+        ui.waitUntil(5000) {ui.onNodeWithTag("document-scroll").fetchSemanticsNode().config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)?.value?.invoke()?.let {it>0f} == true}
+        assertTrue(model.state.value.page!!.layers.none {it.kind==LayerKind.Ink})
+        ui.onNodeWithContentDescription("Eraser").assertIsDisplayed()
+    }
+    @Test fun syntheticStylusDrawsOverActiveText() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Mixed input ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        ui.onRoot().performTouchInput {click(center)}
+        ui.onNode(hasSetTextAction()).performTextInput("Text and ink")
+        ui.waitForIdle()
+        val bounds=ui.onNode(hasSetTextAction()).fetchSemanticsNode().boundsInRoot
+        val down=SystemClock.uptimeMillis()
+        listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_UP).forEachIndexed {i,action->
+            ui.runOnUiThread {
+                val prop=MotionEvent.PointerProperties().apply {id=0;toolType=MotionEvent.TOOL_TYPE_STYLUS}
+                val coords=MotionEvent.PointerCoords().apply {x=bounds.left+20f+i*8f;y=bounds.center.y;pressure=.5f}
+                MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(prop),arrayOf(coords),0,0,1f,1f,0,0,InputDevice.SOURCE_STYLUS,0).also {ui.activity.dispatchTouchEvent(it);it.recycle()}
+            }
+            Thread.sleep(40)
+        }
+        val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
+        ui.waitUntil(10000) {model.state.value.page?.layers?.any {it.kind==LayerKind.Ink}==true}
+        assertTrue(model.state.value.page!!.layers.any {it.kind==LayerKind.Text && it.text=="Text and ink"})
     }
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()

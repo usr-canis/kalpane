@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 package dev.kalpane.ui
 
 import androidx.activity.compose.BackHandler
@@ -20,6 +20,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import android.view.MotionEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -112,7 +115,7 @@ import dev.kalpane.ink.NotebookCanvas
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val paperWidth=minOf(maxWidth,760.dp)
             val paperHeight=paperWidth*(page.height/page.width)+16.dp
-            Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxSize().testTag("document-scroll").verticalScroll(rememberScrollState())) {
             Box(Modifier.width(paperWidth).height(paperHeight).align(Alignment.TopCenter)) {
             // A single persistent Ink view avoids losing in-flight strokes during Compose recomposition.
             AndroidView(factory={ context -> NotebookCanvas(context,vm.store).apply {
@@ -122,6 +125,7 @@ import dev.kalpane.ink.NotebookCanvas
                 onLayerMenu={layerMenu=it}
                 canvasView=this
             } },update={view->view.apply {
+                onStylusEnd={focusManager.clearFocus();keyboard?.hide();inlineText=null;editingText=null}
                 onTextEdit={layer->viewPoint(layer.x,layer.y).let {point->inlinePosition=androidx.compose.ui.geometry.Offset(point.x,point.y);pagePosition=androidx.compose.ui.geometry.Offset(layer.x,layer.y);editingText=layer;typingStarted=false;revealSource=true;baseTextHeight=null;baseLayerHeight=layer.height;inlineText=layer.text}}
                 onTextTap={_,_,_,py -> val anchor=viewPoint(80f,py);editingText=null;typingStarted=false;revealSource=false;baseTextHeight=null;baseLayerHeight=s.prefs.textSize*1.5f;inlinePosition=androidx.compose.ui.geometry.Offset(anchor.x,anchor.y);pagePosition=androidx.compose.ui.geometry.Offset(80f,py);inlineText=""}
             };view.bind(if(editingText!=null && inlineText!=null) page.copy(layers=page.layers.filterNot {l->l.id==editingText?.id}) else page,s.tool,s.penColor,s.penWidth,s.prefs.fingerDrawing,night,s.prefs.gridSpacing)},modifier=Modifier.fillMaxSize().graphicsLayer {alpha=paperAlpha.value})
@@ -130,7 +134,10 @@ import dev.kalpane.ink.NotebookCanvas
                 val fieldWidth=with(density) { (canvasView?.let {canvas->canvas.viewPoint(editingText?.width ?: (page.width-160f),0f).x-canvas.viewPoint(0f,0f).x} ?: 280.dp.toPx()).coerceAtLeast(32.dp.toPx()).toDp() }
                 val fieldFontSize=with(density) { (canvasView?.let {canvas->canvas.viewPoint(0f,editingText?.fontSize ?: s.prefs.textSize).y-canvas.viewPoint(0f,0f).y} ?: 16.sp.toPx()).coerceAtLeast(1f).toSp() }
                 LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show();delay(250);bringIntoViewRequester.bringIntoView() }
-                BasicTextField(value=text,visualTransformation=if(revealSource) VisualTransformation.None else MarkdownVisualTransformation,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).bringIntoViewRequester(bringIntoViewRequester).focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontSize=fieldFontSize,fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
+                BasicTextField(value=text,visualTransformation=if(revealSource) VisualTransformation.None else MarkdownVisualTransformation,onValueChange={value->inlineText=value;val layer=(editingText ?: Layer(kind=LayerKind.Text,x=pagePosition.x,y=pagePosition.y,width=(page.width-pagePosition.x-80f).coerceAtLeast(32f),color=s.penColor,textFace=s.prefs.textFace,fontSize=s.prefs.textSize,height=s.prefs.textSize*1.5f)).copy(text=value);if(value.isNotEmpty() || editingText!=null) {vm.updateTextDuringSession(layer,!typingStarted);typingStarted=true;editingText=layer}},onTextLayout={layout->canvasView?.let {canvas->val measured=canvas.pageDistance(layout.size.height.toFloat());val baseline=baseTextHeight;if(baseline==null) baseTextHeight=measured else if(typingStarted) editingText?.let {layer->vm.resizeTextDuringSession(layer.id,((baseLayerHeight ?: layer.height)+measured-baseline).coerceAtLeast(layer.fontSize*1.5f))}}},modifier=Modifier.align(Alignment.TopStart).offset { androidx.compose.ui.unit.IntOffset(inlinePosition.x.toInt().coerceAtLeast(0),inlinePosition.y.toInt().coerceAtLeast(0)) }.width(fieldWidth).bringIntoViewRequester(bringIntoViewRequester).pointerInteropFilter {event->
+                    val stylus=(0 until event.pointerCount).any {event.getToolType(it)==MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(it)==MotionEvent.TOOL_TYPE_ERASER}
+                    if(stylus) {val forwarded=MotionEvent.obtain(event);forwarded.offsetLocation(inlinePosition.x,inlinePosition.y);canvasView?.dispatchTouchEvent(forwarded);forwarded.recycle();true} else false
+                }.focusRequester(focusRequester),textStyle=MaterialTheme.typography.bodyLarge.copy(color=Color(0xff252522),fontSize=fieldFontSize,fontFamily=noteFont(editingText?.textFace ?: s.prefs.textFace)),decorationBox={inner->Box {if(text.isEmpty()) Text("Type…",color=Color.Gray);inner()}})
             }
 
 
