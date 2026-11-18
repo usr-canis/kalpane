@@ -12,7 +12,7 @@ fun hash(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest
 @Serializable data class InkPoint(
     val x: Float, val y: Float, val time: Long,
     val pressure: Float = -1f, val tilt: Float = -1f, val orientation: Float = -1f,
-    val unitCm: Float = -1f,
+    val unitCm: Float = 0f,
 )
 @Serializable enum class TextFace { Sans, Serif, Monospace }
 @Serializable enum class LayerKind { Ink, Text, Image }
@@ -46,7 +46,7 @@ fun hash(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest
                 require(l.width > 0 && l.height > 0 && l.penWidth in 0.1f..100f && l.fontSize in 1f..300f)
                 require(l.points.size <= 1000000 && l.points.all { it.x.isFinite() && it.y.isFinite() && it.time >= 0 &&
                     (it.pressure == -1f || it.pressure in 0f..1f) && (it.tilt == -1f || it.tilt in 0f..1.5707964f) &&
-                    (it.orientation == -1f || it.orientation in 0f..6.2831855f) && (it.unitCm == -1f || it.unitCm > 0f && it.unitCm.isFinite()) })
+                    (it.orientation == -1f || it.orientation in 0f..6.2831855f) && (it.unitCm == -1f || it.unitCm >= 0f && it.unitCm.isFinite()) })
                 require(l.points.zipWithNext().all { (a,b) -> b.time >= a.time })
                 if (l.kind == LayerKind.Image) require(l.asset.matches(Regex("[a-f0-9]{64}")))
             }

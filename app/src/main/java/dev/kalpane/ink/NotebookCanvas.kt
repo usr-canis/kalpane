@@ -11,8 +11,6 @@ import android.view.*
 import android.widget.FrameLayout
 import androidx.core.content.res.ResourcesCompat
 import androidx.ink.authoring.*
-import androidx.ink.brush.Brush
-import androidx.ink.brush.StockBrushes
 import androidx.ink.brush.InputToolType
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.ink.strokes.*
@@ -133,19 +131,13 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             }
             if(layer.kind == LayerKind.Ink && layer.id !in strokes && loading.add(layer.id)) {
                 scope.launch {
-                    val stroke = withContext(Dispatchers.Default) { runCatching { rebuild(layer) }.getOrNull() }
+                    val stroke = withContext(Dispatchers.Default) { runCatching { rebuildInk(layer) }.getOrNull() }
                     if(page?.id == p.id && stroke != null) { strokes[layer.id] = stroke; dry.invalidate() }
                     loading.remove(layer.id)
                 }
             }
         }
         transform(); dry.invalidate()
-    }
-    private fun brush(color: Int, size: Float) = Brush.createWithColorIntArgb(StockBrushes.pressurePen(),color,size,0.1f)
-    private fun rebuild(layer: Layer): Stroke {
-        val inputs = MutableStrokeInputBatch()
-        layer.points.forEach { p -> inputs.add(if(layer.stylus) InputToolType.STYLUS else InputToolType.TOUCH,p.x,p.y,p.time,p.unitCm,p.pressure,p.tilt,p.orientation) }
-        return Stroke(brush(layer.color,layer.penWidth),inputs)
     }
     override fun onSizeChanged(w: Int,h: Int,oldw: Int,oldh: Int) { if(oldw>0 && oldh>0 && (w!=oldw || h!=oldh)) cancelActive(); super.onSizeChanged(w,h,oldw,oldh); transform() }
     private fun transform() {
@@ -172,7 +164,13 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             val l = if(draft?.id == original.id) draft!! else original
             if(l.id in erased) return@forEach
             when(l.kind) {
-                LayerKind.Ink -> strokes[l.id]?.let { renderer.draw(canvas,it,matrix) }
+                LayerKind.Ink -> strokes[l.id]?.let { renderer.draw(canvas,it,matrix) } ?: run {
+                    // Keep a vector preview visible while native geometry rebuilds off-thread.
+                    val path=Path()
+                    l.points.forEachIndexed {i,p->if(i==0) path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)}
+                    paint.color=l.color;paint.strokeWidth=l.penWidth;paint.style=Paint.Style.STROKE;paint.strokeCap=Paint.Cap.ROUND
+                    canvas.drawPath(path,paint);paint.style=Paint.Style.FILL
+                }
                 LayerKind.Image -> {
                     val rect = RectF(l.x,l.y,l.x+l.width,l.y+l.height)
                     bitmaps[l.asset]?.let { paint.color = Color.WHITE; canvas.drawBitmap(it,null,rect,paint) } ?: run { paint.color = 0xffbbbcb3.toInt(); canvas.drawRect(rect,paint) }
@@ -248,7 +246,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
             if(at.x in 0f..p.width && at.y in 0f..p.height) {
                 requestUnbufferedDispatch(e); parent?.requestDisallowInterceptTouchEvent(true)
                 activePointer=pointer; activeIsPen=isPen
-                val id=live.startStroke(e,pointer,brush(color,penWidth),inverse)
+                val id=live.startStroke(e,pointer,inkBrush(color,penWidth),inverse)
                 activeStroke=id;pending[id]=Triple(p.id,color,penWidth)
             }
             return true

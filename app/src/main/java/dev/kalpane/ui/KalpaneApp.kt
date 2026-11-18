@@ -1,6 +1,9 @@
 package dev.kalpane.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -8,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.NotebookViewModel
@@ -15,6 +19,14 @@ import kotlinx.coroutines.delay
 
 @Composable fun KalpaneApp(vm: NotebookViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val activity=LocalContext.current as? ComponentActivity
+    val night=isNight(s.prefs.theme)
+    LaunchedEffect(activity,night) {
+        activity?.enableEdgeToEdge(
+            statusBarStyle=SystemBarStyle.auto(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT) {night},
+            navigationBarStyle=SystemBarStyle.auto(0xffF5F4EF.toInt(),0xff191B18.toInt()) {night},
+        )
+    }
     var launched by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(s.loaded) { if(s.loaded) { delay(if(s.prefs.reducedMotion) 0 else 550); launched=true } }
     KalpaneTheme(s.prefs.theme) {

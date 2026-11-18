@@ -1,6 +1,7 @@
 package dev.kalpane
 
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -24,6 +25,8 @@ class LayoutCaptureTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private fun capture(name: String) {
         ui.waitForIdle()
+        // Compose can be idle before SurfaceFlinger presents a rotated/resized window.
+        instrumentation.uiAutomation.waitForIdle(500,5000)
         val bitmap=instrumentation.uiAutomation.takeScreenshot() ?: error("Screenshot unavailable")
         val dir=File(instrumentation.targetContext.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
         File(dir,"font-${instrumentation.targetContext.resources.configuration.fontScale}-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
@@ -66,11 +69,14 @@ class LayoutCaptureTest {
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("settings")}
             ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Text & typography"))
             ui.onNodeWithText("Text & typography").performScrollTo()
-            ui.onNodeWithText("Serif").performClick();capture("04-serif-settings")
-            ui.onNodeWithText("Monospace").performClick();capture("05-monospace-settings")
+            ui.onNodeWithText("Serif").performClick()
+            ui.onNodeWithText("Source Serif 4 · thoughtful & literary").performScrollTo();capture("04-serif-settings")
+            ui.onNodeWithText("Monospace").performScrollTo().performClick()
+            ui.onNodeWithText("JetBrains Mono · made for technical notes").performScrollTo();capture("05-monospace-settings")
             ui.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Pen-only mode"))
             ui.onNodeWithContentDescription("Pen-only mode").performScrollTo().assertIsToggleable()
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].screen("editor");it.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}
+            ui.waitUntil(10000) {var landscape=false;scenario.onActivity {landscape=it.resources.configuration.orientation==Configuration.ORIENTATION_LANDSCAPE};landscape}
             ui.waitForIdle();ui.onNodeWithContentDescription("Pen").assertIsDisplayed();capture("06-landscape-editor")
             scenario.onActivity {ViewModelProvider(it)[NotebookViewModel::class.java].preferences {p->p.copy(theme=ThemeMode.Dark)}}
             ui.waitForIdle();capture("07-dark-editor")
