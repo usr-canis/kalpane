@@ -122,7 +122,7 @@ class NotebookViewModel(app: Application) : AndroidViewModel(app) {
         edit(p.copy(layers = if(existing == null) p.layers + l else p.layers.map { if(it.id == l.id) l else it }))
     }
     fun importImage(uri: Uri) {
-        if(_state.value.busy) {message("Finish the current import or backup first.");return}
+        if(_state.value.busy) {message("Finish the current import or Git operation first.");return}
         val target = _state.value.page?.id ?: return
         _state.update {it.copy(busy=true)}
         viewModelScope.launch {

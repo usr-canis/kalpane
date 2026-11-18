@@ -10,6 +10,9 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import dev.kalpane.ink.NotebookCanvas
 import java.io.File
 import org.junit.Assert.assertTrue
 import androidx.core.view.WindowInsetsCompat
@@ -111,6 +114,21 @@ class AppFlowTest {
         assertTrue(model.state.value.page!!.layers.none {it.kind==LayerKind.Ink})
         ui.onNodeWithContentDescription("Eraser").assertIsDisplayed()
     }
+    @Test fun longPageCanScrollAndRemainEditable() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Long page ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
+        ui.runOnUiThread {model.state.value.page?.let {model.edit(it.copy(height=10000f))}}
+        ui.waitForIdle()
+        ui.onNodeWithTag("document-scroll").performTouchInput {swipeUp()}
+        ui.waitUntil(10000) {ui.onNodeWithTag("document-scroll").fetchSemanticsNode().config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)?.value?.invoke()?.let {it>0f}==true}
+        ui.onNodeWithTag("document-scroll").performTouchInput {click(center)}
+        ui.onNode(hasSetTextAction()).performTextInput("Long page text")
+        ui.waitUntil(10000) {model.state.value.page?.layers?.any {it.kind==LayerKind.Text && it.text=="Long page text"}==true}
+    }
     @Test fun syntheticStylusDrawsOverActiveText() {
         library()
         ui.onNodeWithContentDescription("New notebook").performClick()
@@ -133,6 +151,36 @@ class AppFlowTest {
         val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
         ui.waitUntil(10000) {model.state.value.page?.layers?.any {it.kind==LayerKind.Ink}==true}
         assertTrue(model.state.value.page!!.layers.any {it.kind==LayerKind.Text && it.text=="Text and ink"})
+    }
+    @Test fun tappingFormattedTextPlacesCursorAtTappedPosition() {
+        library()
+        ui.onNodeWithContentDescription("New notebook").performClick()
+        ui.onNodeWithText("Name").performTextInput("Cursor ${System.nanoTime()}")
+        ui.onNodeWithText("Save").performClick()
+        ui.onNodeWithContentDescription("Continue last page").performClick()
+        ui.onNodeWithTag("document-scroll").performTouchInput {click(center)}
+        ui.onNode(hasSetTextAction()).performTextInput("# Header")
+        ui.onNodeWithContentDescription("Pen").performClick()
+        ui.waitForIdle()
+        fun findCanvas(view: View): NotebookCanvas? {
+            if(view is NotebookCanvas) return view
+            if(view is ViewGroup) for(i in 0 until view.childCount) findCanvas(view.getChildAt(i))?.let {return it}
+            return null
+        }
+        val model=ViewModelProvider(ui.activity)[NotebookViewModel::class.java]
+        val layer=model.state.value.page!!.layers.first {it.kind==LayerKind.Text}
+        ui.runOnUiThread {
+            val canvas=findCanvas(ui.activity.window.decorView) ?: error("Paper not found")
+            val location=IntArray(2);canvas.getLocationOnScreen(location)
+            val point=canvas.viewPoint(layer.x+1f,layer.y+layer.fontSize*.8f)
+            val down=SystemClock.uptimeMillis()
+            listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP).forEach {action->
+                val event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,location[0]+point.x,location[1]+point.y,0)
+                ui.activity.dispatchTouchEvent(event);event.recycle()
+            }
+        }
+        ui.onNode(hasSetTextAction()).performTextInput("X")
+        ui.waitUntil(5000) {model.state.value.page?.layers?.any {it.text=="# XHeader"}==true}
     }
     @Test fun settingsControlsRemainReachable() {
         library();ui.onNodeWithContentDescription("Settings").performClick()

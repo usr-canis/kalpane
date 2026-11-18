@@ -28,7 +28,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
     var onStroke: (String, Layer) -> Unit = { _, _ -> }
     var onTurn: (Int) -> Unit = {}
     var onLayerMenu: (Layer) -> Unit = {}
-    var onTextEdit: (Layer) -> Unit = {}
+    var onTextEdit: (Layer, Int) -> Unit = { _, _ -> }
     var onStylusEnd: () -> Unit = {}
     var onTextTap: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> }
     internal val hasActiveStroke: Boolean get() = activePointer != null
@@ -273,7 +273,7 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
                 val image=p.layers.lastOrNull {it.kind==LayerKind.Image && pos.x in it.x..(it.x+it.width) && pos.y in it.y..(it.y+it.height)}
                 if(tool!=Tool.Select || image==null) {
                     if(text==null) onTextTap(e.x,e.y,pos.x,pos.y)
-                    else if(!toggleCheckboxAt(p,text,pos)) onTextEdit(text)
+                    else if(!toggleCheckboxAt(p,text,pos)) onTextEdit(text,sourceOffsetAt(text,pos))
                     return true
                 }
             }
@@ -334,6 +334,16 @@ class NotebookCanvas(context: Context, private val store: DiskStore) : FrameLayo
         if(updated==layer.text) return false
         onEdit(page.copy(layers=page.layers.map {if(it.id==layer.id) it.copy(text=updated) else it}))
         return true
+    }
+    private fun sourceOffsetAt(layer: Layer,pos: PointF): Int {
+        val display=markdownDisplay(layer.text)
+        if(display.isEmpty()) return layer.text.length
+        textPaint.textSize=layer.fontSize;textPaint.typeface=NoteTypefaces.get(context,layer.textFace)
+        val layout=StaticLayout.Builder.obtain(display,0,display.length,textPaint,layer.width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(true).build()
+        val line=layout.getLineForVertical((pos.y-layer.y).toInt())
+        val visual=layout.getOffsetForHorizontal(line,pos.x-layer.x)
+        val offsets=projectMarkdown(layer.text).toSource
+        return offsets[visual.coerceIn(offsets.indices)]
     }
     override fun performClick(): Boolean { super.performClick(); return true }
     override fun onDetachedFromWindow() { cancelActive(); scope.cancel(); super.onDetachedFromWindow() }
