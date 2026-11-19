@@ -24,9 +24,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.CloudDownload
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -59,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
+import dev.kalpane.R
 import dev.kalpane.data.PAGE_WIDTH
 import dev.kalpane.data.PageInfo
 import dev.kalpane.data.PageRef
@@ -85,13 +83,13 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
                 TopBar(title = notebook, onBack = onBack) {
                     if (sync.repo != null) {
                         IconButton(onClick = { vm.pull(AppViewModel.Scope.Book(notebook)) }, enabled = busy == null) {
-                            Icon(Icons.Outlined.CloudDownload, "Pull notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OctIcon(R.drawable.oct_repo_pull, "Pull notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { dialog = "push" to PageRef(notebook, "") }, enabled = busy == null) {
-                            Icon(Icons.Outlined.CloudUpload, "Push notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OctIcon(R.drawable.oct_repo_push, "Push notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { dialog = "historybook" to PageRef(notebook, "") }) {
-                            Icon(Icons.Outlined.History, "Notebook history", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OctIcon(R.drawable.oct_history, "Notebook history", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

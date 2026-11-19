@@ -36,6 +36,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
+import dev.kalpane.R
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontFamily
 
 private const val TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new"
 
@@ -44,21 +48,36 @@ fun SyncSection(vm: AppViewModel) {
     val status by vm.sync.collectAsStateWithLifecycle()
     var connecting by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
-    SectionLabel("Sync")
+    SectionLabel("Remote")
     val repo = status.repo
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
         if (repo == null) {
             Text(
-                "Back up notebooks to a private GitHub repository.",
+                "Use a private GitHub repository as origin for your notebooks.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            Button(onClick = { connecting = true }) { Text("Connect repository") }
+            Button(onClick = { connecting = true }) {
+                OctIcon(R.drawable.oct_mark_github, null, Modifier.size(18.dp), LocalContentColor.current)
+                Spacer(Modifier.width(8.dp))
+                Text("Add remote")
+            }
         } else {
-            Text("$repo · ${status.branch}", style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OctIcon(R.drawable.oct_repo, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                Text("origin", style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(8.dp))
+                Text(repo, style = MaterialTheme.typography.bodyLarge)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                OctIcon(R.drawable.oct_git_branch, null, Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                Text(status.branch, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
+            }
             val details = listOfNotNull(
-                status.lastSync?.let { "Last synced ${formatDate(it)}" } ?: "Not synced yet",
+                status.lastSync?.let { "Last pull or push ${formatDate(it)}" } ?: "Never pushed",
                 status.expiry?.let { "token expires $it" },
             ).joinToString(" · ")
             Text(details, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -68,8 +87,8 @@ fun SyncSection(vm: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Back up automatically", style = MaterialTheme.typography.bodyLarge)
-                    Text("Pull and push every 6 hours on Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Auto push", style = MaterialTheme.typography.bodyLarge)
+                    Text("Pull and push to origin every 6 hours on Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = auto, onCheckedChange = null)
             }
@@ -80,23 +99,23 @@ fun SyncSection(vm: AppViewModel) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("Sync now")
+                    Text("Pull & push")
                 }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { connecting = true }) { Text("Change") }
+                OutlinedButton(onClick = { connecting = true }) { Text("Edit remote") }
                 Spacer(Modifier.width(8.dp))
                 TextButton(
                     onClick = { confirmDisconnect = true },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text("Disconnect") }
+                ) { Text("Remove remote") }
             }
         }
     }
     if (connecting) ConnectDialog(vm, status.repo.orEmpty(), status.branch) { connecting = false }
     if (confirmDisconnect) ConfirmDialog(
-        "Disconnect GitHub?",
-        "The token is removed from this device. Notes stay on this device and in the repository.",
-        "Disconnect",
+        "Remove remote?",
+        "The token is removed from this device. Notebooks stay here and on GitHub.",
+        "Remove",
         { confirmDisconnect = false },
     ) { vm.disconnect(); confirmDisconnect = false }
 }
@@ -111,7 +130,7 @@ private fun ConnectDialog(vm: AppViewModel, initialRepo: String, initialBranch: 
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Connect repository") },
+        title = { Text(if (initialRepo.isEmpty()) "Add remote" else "Edit remote") },
         text = {
             Column {
                 Text(
@@ -129,7 +148,7 @@ private fun ConnectDialog(vm: AppViewModel, initialRepo: String, initialBranch: 
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     token, { token = it },
-                    label = { Text("Token") },
+                    label = { Text("Personal access token") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
@@ -155,7 +174,7 @@ private fun ConnectDialog(vm: AppViewModel, initialRepo: String, initialBranch: 
                         }
                     }
                 },
-            ) { Text(if (busy) "Checking…" else "Connect") }
+            ) { Text(if (busy) "Checking…" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )

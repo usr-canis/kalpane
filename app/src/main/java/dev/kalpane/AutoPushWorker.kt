@@ -15,8 +15,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
-/** Pulls and pushes all notebooks every few hours on unmetered networks. */
-class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+/** Auto push: pulls and pushes all notebooks to origin every few hours on unmetered networks. */
+class AutoPushWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val services = Services.get(applicationContext)
         if (services.repo == null || !services.prefs.getBoolean("autoBackup", false)) return Result.success()
@@ -24,7 +24,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (services.editing) return Result.retry()
         return try {
             withContext(Dispatchers.IO) {
-                services.lock.withLock { services.runGit(GitHubSync.Mode.Push, "Automatic backup from Kalpane") { true } }
+                services.lock.withLock { services.runGit(GitHubSync.Mode.Push, "Auto push from Kalpane") { true } }
             }
             Result.success()
         } catch (e: SyncException) {
@@ -33,12 +33,12 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     }
 
     companion object {
-        private const val NAME = "kalpane-backup"
+        private const val NAME = "kalpane-auto-push"
 
         fun schedule(context: Context, on: Boolean) {
             val manager = WorkManager.getInstance(context)
             if (!on) { manager.cancelUniqueWork(NAME); return }
-            val request = PeriodicWorkRequestBuilder<BackupWorker>(6, TimeUnit.HOURS)
+            val request = PeriodicWorkRequestBuilder<AutoPushWorker>(6, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.UNMETERED)

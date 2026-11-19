@@ -19,9 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountTree
-import androidx.compose.material.icons.outlined.CloudDownload
-import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -52,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
+import dev.kalpane.R
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.res.painterResource
 import dev.kalpane.sync.GitHubSync
 import java.time.OffsetDateTime
 
@@ -102,7 +102,7 @@ fun GitBar(vm: AppViewModel, onBranches: () -> Unit, onPush: () -> Unit) {
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.AccountTree, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
+                OctIcon(R.drawable.oct_git_branch, null, Modifier.size(16.dp), colors.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 Text(sync.branch, style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace)
             }
@@ -114,10 +114,10 @@ fun GitBar(vm: AppViewModel, onBranches: () -> Unit, onPush: () -> Unit) {
             )
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { vm.pull() }, enabled = busy == null) {
-                Icon(Icons.Outlined.CloudDownload, "Pull", tint = colors.onSurfaceVariant)
+                OctIcon(R.drawable.oct_repo_pull, "Pull from origin", tint = colors.onSurfaceVariant)
             }
             FilledTonalButton(onClick = onPush, enabled = busy == null) {
-                Icon(Icons.Outlined.CloudUpload, null, Modifier.size(18.dp))
+                OctIcon(R.drawable.oct_repo_push, null, Modifier.size(18.dp), LocalContentColor.current)
                 Spacer(Modifier.width(6.dp))
                 Text("Push")
             }
@@ -135,22 +135,23 @@ fun PushDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Uni
     var message by remember { mutableStateOf(vm.defaultMessage(scope)) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { OctIcon(R.drawable.oct_git_commit, null) },
         title = { Text("Commit & push") },
         text = {
             Column {
                 Text(
-                    "${scope.label} → ${sync.branch}",
+                    "${scope.label} → origin/${sync.branch}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
                 if (changes.isEmpty()) {
-                    Text("No local changes. Push will pull the latest from ${sync.branch}.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Nothing to commit. This pulls the latest from origin/${sync.branch}.", style = MaterialTheme.typography.bodyMedium)
                 } else {
                     LazyColumn(Modifier.heightIn(max = 200.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(changes) { (path, status) ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                StatusBadge(status.toString(), statusColor(status))
+                                OctIcon(diffIcon(status), status.toString(), Modifier.size(16.dp), statusColor(status))
                                 Spacer(Modifier.width(8.dp))
                                 Text(path, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -158,12 +159,12 @@ fun PushDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Uni
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(message, { message = it }, label = { Text("Commit message") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(message, { message = it }, label = { Text("Commit summary") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { vm.push(scope, message); onDismiss() }) { Text(if (changes.isEmpty()) "Pull" else "Push") }
+            TextButton(onClick = { vm.push(scope, message); onDismiss() }) { Text(if (changes.isEmpty()) "Pull from origin" else "Push to origin") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -176,6 +177,7 @@ fun HistoryDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> 
     LaunchedEffect(scope) { commits = vm.history(scope) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { OctIcon(R.drawable.oct_history, null) },
         title = { Text("History") },
         text = {
             val list = commits
@@ -215,6 +217,7 @@ fun BranchDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { branches = vm.branches() }
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { OctIcon(R.drawable.oct_git_branch, null) },
         title = { Text("Branches") },
         text = {
             Column {
@@ -258,4 +261,16 @@ fun BranchDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/** A GitHub Octicon (bundled under the MIT licence). */
+@Composable
+fun OctIcon(res: Int, description: String?, modifier: Modifier = Modifier.size(20.dp), tint: Color = LocalContentColor.current) {
+    Icon(painterResource(res), description, modifier, tint)
+}
+
+fun diffIcon(status: Char) = when (status) {
+    'A' -> R.drawable.oct_diff_added
+    'D' -> R.drawable.oct_diff_removed
+    else -> R.drawable.oct_diff_modified
 }

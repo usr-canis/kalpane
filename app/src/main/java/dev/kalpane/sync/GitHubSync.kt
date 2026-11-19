@@ -64,7 +64,7 @@ class GitHubSync(
             .method(method, body?.toString()?.toRequestBody("application/json".toMediaType()))
             .build()
         val response = try { client.newCall(request).execute() } catch (e: IOException) {
-            throw SyncException("No connection to GitHub. Your notes are safe on this device.")
+            throw SyncException("Could not reach GitHub. Local changes are kept.")
         }
         response.use { r ->
             r.header("github-authentication-token-expiration")?.let { expiryHeader = it }
@@ -72,12 +72,12 @@ class GitHubSync(
             if (r.code in allow) return r.code to text.takeIf { it.isNotBlank() }?.let(json::parseToJsonElement)
             if (!r.isSuccessful) throw SyncException(
                 when (r.code) {
-                    401 -> "GitHub rejected the token. It may have expired; create a new one in Settings."
+                    401 -> "GitHub rejected the token. It may have expired; edit the remote in Settings."
                     403 -> if (r.header("x-ratelimit-remaining") == "0") "GitHub rate limit reached. Try again later."
                     else "The token cannot access this repository. It needs Contents: read and write."
                     404 -> "Repository or branch not found. Check the name and that the token can access it."
                     409 -> "The repository is empty. Create it with a README first."
-                    else -> "GitHub request failed (${r.code}). Your notes are safe on this device."
+                    else -> "GitHub request failed (${r.code}). Local changes are kept."
                 }
             )
             return r.code to text.takeIf { it.isNotBlank() }?.let(json::parseToJsonElement)
@@ -113,7 +113,7 @@ class GitHubSync(
             api.toHttpUrl().newBuilder().addPathSegments("repos/$repo/git/trees").addPathSegment(tree)
                 .addQueryParameter("recursive", "1").build().toString()
         )
-        if (listing["truncated"]?.jsonPrimitive?.boolean == true) throw SyncException("The repository is too large to sync.")
+        if (listing["truncated"]?.jsonPrimitive?.boolean == true) throw SyncException("The repository is too large to pull.")
         val files = listing.getValue("tree").jsonArray.map { it.jsonObject }
             .filter { it.str("type") == "blob" && SyncPlanner.isNotePath(it.str("path")) }
             .associate { it.str("path") to it.str("sha") }
@@ -126,10 +126,10 @@ class GitHubSync(
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28").build()
         val response = try { client.newCall(request).execute() } catch (e: IOException) {
-            throw SyncException("No connection to GitHub. Your notes are safe on this device.")
+            throw SyncException("Could not reach GitHub. Local changes are kept.")
         }
         response.use { r ->
-            if (!r.isSuccessful) throw SyncException("GitHub request failed (${r.code}). Your notes are safe on this device.")
+            if (!r.isSuccessful) throw SyncException("GitHub request failed (${r.code}). Local changes are kept.")
             return json.parseToJsonElement(r.body!!.string()).jsonObject
         }
     }

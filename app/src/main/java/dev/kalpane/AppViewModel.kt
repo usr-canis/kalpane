@@ -215,7 +215,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAutoBackup(on: Boolean) {
         _autoBackup.value = on
         prefs.edit().putBoolean("autoBackup", on).apply()
-        BackupWorker.schedule(getApplication(), on)
+        AutoPushWorker.schedule(getApplication(), on)
     }
     fun movePage(ref: PageRef, offset: Int) = io { store.movePage(ref, offset); reloadPages(ref.notebook) }
 
@@ -280,7 +280,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             refreshStatus()
             null
         } catch (e: Exception) {
-            e.message ?: "Could not connect."
+            e.message ?: "Could not add the remote."
         }
         onDone(error)
     }
@@ -385,7 +385,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 message?.let { _message.value = it }
             } catch (e: Exception) {
-                _message.value = e.message ?: "$label failed. Your notes are safe on this device."
+                _message.value = e.message ?: "$label failed. Local changes are kept."
             } finally {
                 _busy.value = null
             }
@@ -445,7 +445,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (name == status.branch) return@git null
         if (computeChanges().isNotEmpty()) throw SyncException("Push or discard your changes before switching branch.")
         val repo = status.repo!!
-        val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
+        val token = vault.get(repo) ?: throw SyncException("Add the remote again in Settings.")
         val base = GitHubSync(repo, name, token).checkout(store.root)
         services.writeBase(repo, name, base)
         prefs.edit().putString("syncBranch", name).apply()
@@ -489,7 +489,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshStatus()
         daysUntilExpiry()?.let { days ->
             if (_sync.value.repo != null && days <= 7) {
-                _message.value = if (days < 0) "Your GitHub token has expired. Create a new one in Settings."
+                _message.value = if (days < 0) "Your GitHub token has expired. Edit the remote in Settings."
                 else "Your GitHub token expires in $days ${if (days == 1L) "day" else "days"}."
             }
         }

@@ -2,7 +2,6 @@ package dev.kalpane.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -110,6 +109,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
+import dev.kalpane.R
 import dev.kalpane.data.Geometry
 import dev.kalpane.data.Item
 import dev.kalpane.data.ListKind
@@ -202,7 +202,7 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
                 val status = pageStatus(changes, ref.notebook, ref.name)
                 Box {
                     IconButton(onClick = { vm.save(ref, s.data()); dialog = "push" }, enabled = busy == null) {
-                        Icon(Icons.Outlined.CloudUpload, "Push page", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OctIcon(R.drawable.oct_repo_push, "Push page", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (status != null) Box(
                         Modifier.align(Alignment.TopEnd).padding(10.dp).size(8.dp).clip(CircleShape).background(statusColor(status)),

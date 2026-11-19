@@ -47,14 +47,14 @@ class Services private constructor(context: Context) {
         writeAtomic(baseFile(repo, branch), Json.encodeToString(baseSerializer, base).toByteArray())
 
     fun client(branch: String = this.branch): GitHubSync {
-        val repo = repo ?: throw SyncException("Connect a repository in Settings.")
-        val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
+        val repo = repo ?: throw SyncException("Add a remote in Settings.")
+        val token = vault.get(repo) ?: throw SyncException("Add the remote again in Settings.")
         return GitHubSync(repo, branch, token)
     }
 
     /** Runs a pull or push and records the new base. Call while holding [lock]. */
     fun runGit(mode: GitHubSync.Mode, message: String, scope: (String) -> Boolean): SyncResult {
-        val repo = repo ?: throw SyncException("Connect a repository in Settings.")
+        val repo = repo ?: throw SyncException("Add a remote in Settings.")
         val c = client()
         val result = c.run(store.root, readBase(repo, branch), mode, message, scope)
         writeBase(repo, branch, result.base)
