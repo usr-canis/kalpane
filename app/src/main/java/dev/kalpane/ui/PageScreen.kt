@@ -290,14 +290,6 @@ private fun PageEditor(
             dialog = null
             s.setText(MarkdownEdit.toggleWrap(s.text.toEdit(), "[[$target", "]]").let { e -> e.copy(start = e.max + 2, end = e.max + 2) }.toValue(), merge = false)
         }) { dialog = null }
-        else -> dialog?.takeIf { it.startsWith("create:") }?.let { d ->
-            val name = d.removePrefix("create:")
-            ConfirmDialog("Create page?", "No page called “$name” yet. Create it in ${ref.notebook}?", "Create", { dialog = null }) {
-                dialog = null
-                vm.save(ref, s.data())
-                vm.createNamedPage(ref.notebook, name.substringAfterLast('/'), onRenamed)
-            }
-        }
         "style" -> PageStyleDialog(
             style = PageStyle(font.name, size, paperStyle),
             title = "Page style",
@@ -312,6 +304,14 @@ private fun PageEditor(
             dialog = null
             skipSave = true
             vm.discard(ref) { onBack() }
+        }
+        else -> dialog?.takeIf { it.startsWith("create:") }?.let { d ->
+            val name = d.removePrefix("create:")
+            ConfirmDialog("Create page?", "No page called “$name” yet. Create it in ${ref.notebook}?", "Create", { dialog = null }) {
+                dialog = null
+                vm.save(ref, s.data())
+                vm.createNamedPage(ref.notebook, name.substringAfterLast('/'), onRenamed)
+            }
         }
     }
 }
