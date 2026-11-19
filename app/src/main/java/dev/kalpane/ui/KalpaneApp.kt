@@ -17,7 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
 import dev.kalpane.data.NoteRef
@@ -26,7 +26,7 @@ import dev.kalpane.data.NoteRef
 fun KalpaneApp(vm: AppViewModel) {
     val theme by vm.theme.collectAsStateWithLifecycle()
     val dark = isDark(theme)
-    val activity = LocalContext.current as? ComponentActivity
+    val activity = LocalActivity.current as? ComponentActivity
     LaunchedEffect(dark) {
         val transparent = Color.Transparent.toArgb()
         val style = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
