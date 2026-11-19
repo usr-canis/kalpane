@@ -72,7 +72,7 @@ fun PageText(
     palette: MarkdownPalette,
     focus: FocusRequester,
     font: NoteFont,
-    size: Float,
+    textSize: Float,
     onHeight: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -88,8 +88,8 @@ fun PageText(
     BasicTextField(
         value = value,
         onValueChange = { handleTextChange(state, it) },
-        textStyle = TextStyle(color = colors.onSurface, fontFamily = family, fontSize = size.sp, lineHeight = (size * LINE_HEIGHT).sp),
-        visualTransformation = MarkdownTransformation(reveal, palette, mono, size),
+        textStyle = TextStyle(color = colors.onSurface, fontFamily = family, fontSize = textSize.sp, lineHeight = (textSize * LINE_HEIGHT).sp),
+        visualTransformation = MarkdownTransformation(reveal, palette, mono, textSize),
         cursorBrush = SolidColor(colors.primary),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         onTextLayout = { layout = it; onHeight(it.size.height / density) },
