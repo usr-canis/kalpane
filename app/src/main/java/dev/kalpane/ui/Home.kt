@@ -1,6 +1,25 @@
 package dev.kalpane.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import dev.kalpane.data.PageRef
+import dev.kalpane.data.SearchHit
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -72,8 +91,20 @@ fun MessageHost(vm: AppViewModel, snackbar: SnackbarHostState) {
 }
 
 @Composable
-fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(
+    vm: AppViewModel,
+    onOpen: (String) -> Unit,
+    onOpenPage: (PageRef) -> Unit,
+    onSettings: () -> Unit,
+    onTrash: () -> Unit,
+) {
     val notebooks by vm.notebooks.collectAsStateWithLifecycle()
+    val recent by vm.recent.collectAsStateWithLifecycle()
+    val results by vm.results.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var query by rememberSaveable { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }
     val sync by vm.sync.collectAsStateWithLifecycle()
     val changes by vm.changes.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -107,13 +138,22 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                 Spacer(Modifier.width(10.dp))
                 Text("ಕಲ್ಪನೆ", fontFamily = Mallige, fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Trash") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = { menu = false; onTrash() })
+                        DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { menu = false; onSettings() })
+                    }
                 }
             }
+            SearchField(query, { query = it; vm.search(it) }, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             if (sync.repo != null) GitBar(vm, onBranches = { dialog = "branches" }, onPush = { dialog = "push" })
             val list = notebooks
+            val hits = results
             when {
+                query.isNotBlank() && hits != null -> SearchResults(hits, onOpenPage)
                 list == null -> Unit
                 list.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ExtendedFloatingActionButton(
@@ -131,6 +171,29 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
+                    if (recent.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "recent") {
+                            Column {
+                                SectionTitle("Recent")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(recent, key = { it.ref.encode() }) { page ->
+                                        Column(Modifier.width(96.dp)) {
+                                            PageThumbnail(page, Modifier.fillMaxWidth()) { onOpenPage(page.ref) }
+                                            Text(
+                                                page.preview.ifEmpty { page.ref.name },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 6.dp),
+                                            )
+                                            Text(page.ref.notebook, style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "books") { SectionTitle("Notebooks") }
+                    }
                     items(list, key = { it.name }) { book ->
                         NotebookCard(
                             book,
@@ -138,6 +201,8 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                             onGit = { action ->
                                 if (action == "pullbook") {
                                     vm.pull(AppViewModel.Scope.Book(book.name))
+                                } else if (action == "exportbook") {
+                                    scope.launch { exportNotebook(context, vm, book.name) }
                                 } else {
                                     dialog = "$action:${book.name}"
                                 }
@@ -170,9 +235,9 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
             val name = d.removePrefix("delete:")
             val count = notebooks?.firstOrNull { it.name == name }?.pages ?: 0
             ConfirmDialog(
-                "Delete notebook?",
-                "“$name” and its $count ${if (count == 1) "page" else "pages"} will be deleted.",
-                "Delete",
+                "Move to trash?",
+                "“$name” and its $count ${if (count == 1) "page" else "pages"} move to trash. You can restore them for 30 days.",
+                "Move to trash",
                 { dialog = null },
             ) { vm.deleteNotebook(name); dialog = null }
         }
@@ -218,6 +283,7 @@ private fun NotebookCard(
                     DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onGit("historybook") })
                     HorizontalDivider()
                 }
+                DropdownMenuItem(text = { Text("Export as PDF") }, onClick = { menu = false; onGit("exportbook") })
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                 DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
             }
@@ -244,5 +310,70 @@ fun formatDate(millis: Long): String {
         time.toLocalDate() == today.minusDays(1) -> "Yesterday"
         time.year == today.year -> dayFormat.format(time)
         else -> yearFormat.format(time)
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+    )
+}
+
+@Composable
+private fun SearchField(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(colors.surfaceContainer)
+            .padding(start = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Search, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) Text("Search pages", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
+            BasicTextField(
+                value = query, onValueChange = onChange, singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
+                cursorBrush = SolidColor(colors.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (query.isNotEmpty()) IconButton(onClick = { onChange("") }) {
+            Icon(Icons.Filled.Close, "Clear search", tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun SearchResults(hits: List<SearchHit>, onOpen: (PageRef) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    if (hits.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No results", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
+        }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+        items(hits, key = { it.ref.encode() }) { hit ->
+            Column(Modifier.fillMaxWidth().clickable { onOpen(hit.ref) }.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Text(hit.ref.name, style = MaterialTheme.typography.titleSmall)
+                Text(hit.ref.notebook, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                if (hit.snippet.isNotEmpty()) {
+                    val text = buildAnnotatedString {
+                        append(hit.snippet)
+                        if (hit.start >= 0 && hit.start + hit.length <= hit.snippet.length) {
+                            addStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.SemiBold), hit.start, hit.start + hit.length)
+                        }
+                    }
+                    Text(text, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = colors.outlineVariant)
+        }
     }
 }

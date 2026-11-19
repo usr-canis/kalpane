@@ -12,8 +12,8 @@ android {
         applicationId = "dev.kalpane"
         minSdk = 29
         targetSdk = 36
-        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 8
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.5.0"
+        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 9
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -69,6 +69,7 @@ dependencies {
     implementation("androidx.ink:ink-brush:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

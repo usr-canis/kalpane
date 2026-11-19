@@ -4,7 +4,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
@@ -41,6 +43,16 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
     private class Rotate(start: Pt, originals: List<Item>, val center: Pt) : Transform(start, originals)
 
     private var active: Active? = null
+
+    /** The MotionEvent being dispatched, for the low-latency ink overlay. */
+    var lastEvent: android.view.MotionEvent? = null
+    /** True while the overlay draws the stroke, so the page skips its own live stroke. */
+    var wet = false
+    /** Theme ink colour, used when the pen colour follows the theme. */
+    var inkArgb = 0xFF1C1B19.toInt()
+    val penInk get() = (active as? Ink)?.highlighter == false
+    val liveArgb get() = liveColor ?: inkArgb
+    val livePressure get() = tools.pressure.value
 
     /** Style of the stroke being drawn, for live rendering. */
     val liveHighlighter get() = (active as? Ink)?.highlighter == true
@@ -226,7 +238,9 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
 }
 
 /** Routes page pointer input to [controller] before the text field sees it. */
-fun Modifier.canvasInput(controller: CanvasController, scale: () -> Float): Modifier = pointerInput(controller) {
+@OptIn(ExperimentalComposeUiApi::class)
+fun Modifier.canvasInput(controller: CanvasController, scale: () -> Float): Modifier =
+    motionEventSpy { controller.lastEvent = it }.pointerInput(controller) {
     var lastStylusUp = 0L
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -244,15 +258,25 @@ fun Modifier.canvasInput(controller: CanvasController, scale: () -> Float): Modi
         }
         if (!controller.begin(pt(down.position), stylus, down.type == PointerType.Eraser, down.pressure)) return@awaitEachGesture
         down.consume()
+        if (stylus && controller.penInk) {
+            controller.wet = controller.lastEvent?.let { WetInk.start(it, controller.liveArgb, controller.liveWidth * s) } ?: false
+        }
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
             val change = event.changes.firstOrNull { it.id == down.id }
             event.changes.forEach { it.consume() } // Rejects palms and other fingers meanwhile.
-            if (change == null) { controller.cancel(); break }
+            if (change == null) {
+                if (controller.wet) WetInk.cancel(controller.lastEvent)
+                controller.wet = false
+                controller.cancel(); break
+            }
             change.historical.forEach { controller.move(pt(it.position), change.pressure, stylus) }
             if (change.pressed) {
                 controller.move(pt(change.position), change.pressure, stylus)
+                if (controller.wet) controller.lastEvent?.let { WetInk.move(it) }
             } else {
+                if (controller.wet) controller.lastEvent?.let { WetInk.finish(it) }
+                controller.wet = false
                 controller.end()
                 if (stylus) lastStylusUp = change.uptimeMillis
                 break

@@ -1,7 +1,6 @@
 package dev.kalpane
 
 import android.app.Application
-import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
@@ -9,27 +8,22 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.kalpane.data.NoteStore
 import dev.kalpane.data.NotebookInfo
 import dev.kalpane.data.PageData
 import dev.kalpane.data.PageInfo
 import dev.kalpane.data.PageRef
+import dev.kalpane.data.SearchHit
+import dev.kalpane.data.TrashEntry
 import dev.kalpane.data.Paper
-import dev.kalpane.data.hash
 import dev.kalpane.data.writeAtomic
-import dev.kalpane.sync.CredentialVault
 import dev.kalpane.sync.GitHubSync
 import dev.kalpane.sync.SyncException
 import dev.kalpane.sync.SyncPlanner
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -58,9 +52,10 @@ data class PenPrefs(val width: Float = 2.5f, val highlighterWidth: Float = 18f, 
 data class ImportedImage(val asset: String, val width: Int, val height: Int)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
-    private val store = NoteStore(File(app.filesDir, "notes"))
-    private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private val lock = Mutex() // Fair: queued disk operations run in order.
+    private val services = Services.get(app)
+    private val store = services.store
+    private val prefs = services.prefs
+    private val lock = services.lock
     private val images = LruCache<String, ImageBitmap>(40)
 
     private val _notebooks = MutableStateFlow<List<NotebookInfo>?>(null)
@@ -77,8 +72,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _fingerDrawing = MutableStateFlow(prefs.getBoolean("fingerDrawing", false))
     val fingerDrawing: StateFlow<Boolean> = _fingerDrawing.asStateFlow()
 
-    private val vault = CredentialVault(app)
-    private val syncDir = File(app.filesDir, "sync").apply { mkdirs() }
+    private val vault = services.vault
 
     private val _sync = MutableStateFlow(
         SyncStatus(
@@ -122,7 +116,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try { disk(block) } catch (e: Exception) { _message.value = e.message ?: "Something went wrong." }
     }
 
-    private fun reloadNotebooks() { _notebooks.value = store.notebooks() }
+    private fun reloadNotebooks() {
+        _notebooks.value = store.notebooks()
+        _recent.value = store.recent()
+    }
     private fun reloadPages(notebook: String) { _pages.value = PagesState(notebook, store.pages(notebook)) }
 
     fun refreshNotebooks() = io { reloadNotebooks() }
@@ -145,7 +142,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun renameNotebook(old: String, name: String) = io { store.renameNotebook(old, name); reloadNotebooks() }
-    fun deleteNotebook(name: String) = io { store.deleteNotebook(name); reloadNotebooks() }
+    fun deleteNotebook(name: String) = io {
+        services.trash.trashNotebook(store, name)
+        reloadNotebooks(); reloadTrash()
+        if (_sync.value.repo != null) _changes.value = computeChanges()
+        _message.value = "Notebook moved to trash"
+    }
 
     fun createPage(notebook: String, onCreated: (PageRef) -> Unit) = viewModelScope.launch {
         val ref = runCatching { disk { store.createPage(notebook) } }.onFailure { _message.value = it.message }.getOrNull() ?: return@launch
@@ -158,10 +160,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onRenamed(new)
     }
 
-    fun deletePage(ref: PageRef) = io { store.deletePage(ref); reloadPages(ref.notebook) }
+    fun deletePage(ref: PageRef) = io {
+        services.trash.trashPage(store, ref)
+        reloadPages(ref.notebook); reloadTrash()
+        if (_sync.value.repo != null) _changes.value = computeChanges()
+        _message.value = "Page moved to trash"
+    }
+
+    // ---- Trash ----
+
+    private val _trash = MutableStateFlow<List<TrashEntry>>(emptyList())
+    val trash: StateFlow<List<TrashEntry>> = _trash.asStateFlow()
+    private fun reloadTrash() { _trash.value = services.trash.list() }
+    fun refreshTrash() = io { services.trash.purge(); reloadTrash() }
+
+    fun restore(entry: TrashEntry) = io {
+        val name = services.trash.restore(store, entry.id)
+        reloadTrash(); reloadNotebooks()
+        _pages.value?.let { reloadPages(it.notebook) }
+        if (_sync.value.repo != null) _changes.value = computeChanges()
+        _message.value = "Restored “$name”"
+    }
+
+    fun deleteForever(entry: TrashEntry) = io { services.trash.delete(entry.id); reloadTrash() }
+    fun emptyTrash() = io { services.trash.empty(); reloadTrash() }
+
+    // ---- Search and recent pages ----
+
+    private val _results = MutableStateFlow<List<SearchHit>?>(null)
+    /** Null when not searching. */
+    val results: StateFlow<List<SearchHit>?> = _results.asStateFlow()
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    fun search(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) { _results.value = null; return }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(150)
+            _results.value = disk { store.search(query) }
+        }
+    }
+
+    private val _recent = MutableStateFlow<List<PageInfo>>(emptyList())
+    val recent: StateFlow<List<PageInfo>> = _recent.asStateFlow()
+
+    /** Marks a page as open so background backup waits. */
+    fun setEditing(on: Boolean) { services.editing = on }
+
+    // ---- Automatic backup ----
+
+    private val _autoBackup = MutableStateFlow(prefs.getBoolean("autoBackup", false))
+    val autoBackup: StateFlow<Boolean> = _autoBackup.asStateFlow()
+
+    fun setAutoBackup(on: Boolean) {
+        _autoBackup.value = on
+        prefs.edit().putBoolean("autoBackup", on).apply()
+        BackupWorker.schedule(getApplication(), on)
+    }
     fun movePage(ref: PageRef, offset: Int) = io { store.movePage(ref, offset); reloadPages(ref.notebook) }
 
     suspend fun load(ref: PageRef): PageData = disk { store.read(ref) }
+
+    suspend fun pageRefs(notebook: String): List<PageRef> = disk { store.pageNames(notebook).map { PageRef(notebook, it) } }
 
     fun save(ref: PageRef, data: PageData) = io {
         store.write(ref, data)
@@ -206,13 +266,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private val baseSerializer = MapSerializer(String.serializer(), String.serializer())
-
-    private fun baseFile(repo: String, branch: String) = File(syncDir, "base-${hash("$repo\n$branch".toByteArray()).take(16)}.json")
-
-    private fun readBase(repo: String, branch: String): Map<String, String> = runCatching {
-        Json.decodeFromString(baseSerializer, baseFile(repo, branch).readText())
-    }.getOrDefault(emptyMap())
+    private fun readBase(repo: String, branch: String) = services.readBase(repo, branch)
 
     /** Verifies access, then stores the token encrypted on this device. Reports an error message or null. */
     fun connect(repo: String, branch: String, token: String, onDone: (String?) -> Unit) = viewModelScope.launch {
@@ -232,6 +286,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnect() {
+        setAutoBackup(false)
         _sync.value.repo?.let { vault.remove(it) }
         prefs.edit().remove("syncRepo").remove("syncBranch").remove("tokenExpiry").remove("lastSync").apply()
         _sync.value = SyncStatus()
@@ -314,12 +369,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         is Scope.Page -> "Update ${scope.ref.notebook}/${scope.ref.name}"
     }
 
-    private fun client(): GitHubSync {
-        val status = _sync.value
-        val repo = status.repo ?: throw SyncException("Connect a repository in Settings.")
-        val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
-        return GitHubSync(repo, status.branch, token)
-    }
+    private fun client(): GitHubSync = services.client(_sync.value.branch)
 
     private fun git(label: String, block: () -> String?) {
         if (_busy.value != null) return
@@ -343,20 +393,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun runGit(scope: Scope, mode: GitHubSync.Mode, message: String): String {
-        val status = _sync.value
-        val repo = status.repo!!
-        val c = client()
-        val result = c.run(store.root, readBase(repo, status.branch), mode, message.ifBlank { defaultMessage(scope) }, predicate(scope))
-        writeAtomic(baseFile(repo, status.branch), Json.encodeToString(baseSerializer, result.base).toByteArray())
-        c.tokenExpiry?.take(10)?.let { prefs.edit().putString("tokenExpiry", it).apply() }
-        val now = System.currentTimeMillis()
-        prefs.edit().putLong("lastSync", now).apply()
-        _sync.value = _sync.value.copy(lastSync = now, expiry = prefs.getString("tokenExpiry", null))
+        val branch = _sync.value.branch
+        val result = services.runGit(mode, message.ifBlank { defaultMessage(scope) }, predicate(scope))
+        _sync.value = _sync.value.copy(lastSync = System.currentTimeMillis(), expiry = prefs.getString("tokenExpiry", null))
         val conflicts = if (result.conflicts > 0) " ${result.conflicts} conflicting ${if (result.conflicts == 1) "page" else "pages"} saved as “(conflict)”." else ""
         return when {
             mode == GitHubSync.Mode.Push && result.pushed > 0 ->
-                "Pushed ${result.pushed} ${if (result.pushed == 1) "file" else "files"} to ${status.branch} · ${result.head.take(7)}.$conflicts"
-            result.pulled > 0 -> "Pulled ${result.pulled} ${if (result.pulled == 1) "change" else "changes"} from ${status.branch}.$conflicts"
+                "Pushed ${result.pushed} ${if (result.pushed == 1) "file" else "files"} to $branch · ${result.head.take(7)}.$conflicts"
+            result.pulled > 0 -> "Pulled ${result.pulled} ${if (result.pulled == 1) "change" else "changes"} from $branch.$conflicts"
             else -> "Already up to date.$conflicts"
         }
     }
@@ -403,7 +447,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val repo = status.repo!!
         val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
         val base = GitHubSync(repo, name, token).checkout(store.root)
-        writeAtomic(baseFile(repo, name), Json.encodeToString(baseSerializer, base).toByteArray())
+        services.writeBase(repo, name, base)
         prefs.edit().putString("syncBranch", name).apply()
         _sync.value = _sync.value.copy(branch = name)
         "Switched to $name."
@@ -415,7 +459,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val repo = status.repo!!
         client().createBranch(name.trim())
         val base = readBase(repo, status.branch)
-        writeAtomic(baseFile(repo, name.trim()), Json.encodeToString(baseSerializer, base).toByteArray())
+        services.writeBase(repo, name.trim(), base)
         prefs.edit().putString("syncBranch", name.trim()).apply()
         _sync.value = _sync.value.copy(branch = name.trim())
         "Created and switched to ${name.trim()}."
@@ -441,6 +485,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshNotebooks()
+        refreshTrash()
         refreshStatus()
         daysUntilExpiry()?.let { days ->
             if (_sync.value.repo != null && days <= 7) {

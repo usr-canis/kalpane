@@ -69,10 +69,13 @@ fun KalpaneApp(vm: AppViewModel) {
                         onBack = { screen = "" },
                     )
                     current == "settings" -> SettingsScreen(vm, onBack = { screen = "" })
+                    current == "trash" -> TrashScreen(vm, onBack = { screen = "" })
                     else -> HomeScreen(
                         vm = vm,
                         onOpen = { screen = "book:$it" },
+                        onOpenPage = { screen = "page:" + it.encode() },
                         onSettings = { screen = "settings" },
+                        onTrash = { screen = "trash" },
                     )
                 }
             }

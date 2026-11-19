@@ -146,7 +146,7 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
             "pushpage" -> PushDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
             "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
             "rename" -> NameDialog("Rename page", d.second.name, "Rename", { dialog = null }) { vm.renamePage(d.second, it); dialog = null }
-            "delete" -> ConfirmDialog("Delete page?", "“${d.second.name}” will be deleted.", "Delete", { dialog = null }) {
+            "delete" -> ConfirmDialog("Move to trash?", "“${d.second.name}” moves to trash. You can restore it for 30 days.", "Move to trash", { dialog = null }) {
                 vm.deletePage(d.second); dialog = null
             }
         }
@@ -171,32 +171,7 @@ private fun PageCard(
     var menu by remember { mutableStateOf(false) }
     Column {
         Box {
-            BoxWithConstraints(
-                Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(10.dp))
-                    .background(paper)
-                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(10.dp))
-                    .combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
-            ) {
-                val k = maxWidth / PAGE_WIDTH.dp // thumbnail dp per page unit
-                if (page.preview.isNotEmpty()) {
-                    Text(
-                        page.preview,
-                        fontSize = (17 * k).sp,
-                        lineHeight = (27 * k).sp,
-                        color = colors.onSurfaceVariant,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier.padding(horizontal = (56 * k).dp, vertical = (40 * k).dp),
-                    )
-                }
-                Canvas(Modifier.fillMaxSize()) {
-                    val s = size.width / PAGE_WIDTH
-                    clipRect {
-                        withTransform({ scale(s, s, Offset.Zero) }) {
-                            page.items.forEach { drawItem(it, colors.onSurface, cache, emptyMap(), colors.surfaceContainerHigh) }
-                        }
-                    }
-                }
-            }
+            PageThumbnail(page, Modifier.fillMaxWidth(), onLongClick = { menu = true }, onClick = onOpen)
             if (status != null) StatusBadge(status.toString(), statusColor(status), Modifier.align(Alignment.TopEnd).padding(8.dp))
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (connected) {
@@ -217,5 +192,41 @@ private fun PageCard(
             modifier = Modifier.padding(top = 8.dp, start = 2.dp),
         )
         Text(formatDate(page.modified), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 2.dp))
+    }
+}
+
+/** A small rendering of a page: its first lines of text and its drawings. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun PageThumbnail(page: PageInfo, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < 0.5f
+    val paper = if (dark) colors.surfaceContainer else Color.White
+    val cache = remember { PathCache() }
+    BoxWithConstraints(
+        modifier.aspectRatio(0.72f).clip(RoundedCornerShape(10.dp))
+            .background(paper)
+            .border(1.dp, colors.outlineVariant, RoundedCornerShape(10.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        val k = maxWidth / PAGE_WIDTH.dp // thumbnail dp per page unit
+        if (page.preview.isNotEmpty()) {
+            Text(
+                page.preview,
+                fontSize = (17 * k).sp,
+                lineHeight = (27 * k).sp,
+                color = colors.onSurfaceVariant,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(horizontal = (56 * k).dp, vertical = (40 * k).dp),
+            )
+        }
+        Canvas(Modifier.fillMaxSize()) {
+            val s = size.width / PAGE_WIDTH
+            clipRect {
+                withTransform({ scale(s, s, Offset.Zero) }) {
+                    page.items.forEach { drawItem(it, colors.onSurface, cache, emptyMap(), colors.surfaceContainerHigh) }
+                }
+            }
+        }
     }
 }

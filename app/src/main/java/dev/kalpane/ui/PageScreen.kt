@@ -102,7 +102,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -143,6 +145,7 @@ fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> U
 @Composable
 private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: ToolState, onBack: () -> Unit, onRenamed: (PageRef) -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val fingerDrawing by vm.fingerDrawing.collectAsStateWithLifecycle()
     val defaults by vm.defaults.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
@@ -166,7 +169,11 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
         if (s.version > 0) { delay(500); vm.save(ref, s.data()) }
     }
     DisposableEffect(s) {
-        onDispose { if (!skipSave && s.version > 0) vm.save(ref, s.data()) }
+        vm.setEditing(true)
+        onDispose {
+            vm.setEditing(false)
+            if (!skipSave && s.version > 0) vm.save(ref, s.data())
+        }
     }
     BackHandler {
         if (s.selection.isNotEmpty()) s.selection = emptySet() else onBack()
@@ -208,6 +215,12 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Page style") }, onClick = { menu = false; dialog = "style" })
+                    DropdownMenuItem(text = { Text("Export as PDF") }, onClick = {
+                        menu = false; vm.save(ref, s.data()); scope.launch { exportPage(context, vm, ref, pdf = true) }
+                    })
+                    DropdownMenuItem(text = { Text("Export as image") }, onClick = {
+                        menu = false; vm.save(ref, s.data()); scope.launch { exportPage(context, vm, ref, pdf = false) }
+                    })
                     if (sync.repo != null) {
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text("Pull page") }, onClick = { menu = false; vm.save(ref, s.data()); vm.pull(AppViewModel.Scope.Page(ref)) })
@@ -240,7 +253,7 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
             vm.save(ref, s.data())
             vm.renamePage(ref, name, onRenamed)
         }
-        "delete" -> ConfirmDialog("Delete page?", "“${ref.name}” will be deleted.", "Delete", { dialog = null }) {
+        "delete" -> ConfirmDialog("Move to trash?", "“${ref.name}” moves to trash. You can restore it for 30 days.", "Move to trash", { dialog = null }) {
             dialog = null
             skipSave = true
             vm.deletePage(ref)
@@ -310,6 +323,7 @@ private fun PageSurface(
         viewport.scale = scale; viewport.height = vh
         controller.hu = base.density / scale
         controller.fingerDrawing = fingerDrawing
+        controller.inkArgb = colors.onSurface.toArgb()
         val itemsBottom = Geometry.boundsOf(s.items)?.bottom ?: 0f
         val pageHeight = max(max(textHeight + 120f, itemsBottom + 240f), vh / scale)
         val hu = base.density / scale
@@ -350,10 +364,10 @@ private fun PageSurface(
                             withTransform({ scale(scale, scale, Offset.Zero) }) {
                                 val ink = colors.onSurface
                                 s.items.forEach { drawItem(it, ink, cache, bitmaps, colors.surfaceContainerHigh) }
-                                if (s.live.isNotEmpty()) {
+                                if (s.live.isNotEmpty() && !controller.wet) {
                                     val pts = s.live.toList()
                                     if (controller.liveHighlighter) drawHighlighter(pts, controller.liveWidth, itemColor(controller.liveColor, ink).copy(alpha = 0.38f))
-                                    else drawPath(strokeOutline(pts, controller.liveWidth, false), itemColor(controller.liveColor, ink))
+                                    else drawPath(strokeOutline(pts, controller.liveWidth, false, controller.livePressure), itemColor(controller.liveColor, ink))
                                 }
                                 val selected = s.items.filter { it.id in s.selection }
                                 selectionFrame(selected, hu)?.let { drawSelection(it, colors.primary, paper, hu) }

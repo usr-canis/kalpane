@@ -29,6 +29,9 @@ data class PageInfo(val ref: PageRef, val preview: String, val items: List<Item>
 
 data class PageData(val text: String, val canvas: CanvasDoc)
 
+/** A search match: [snippet] is plain text with the match at [start] for [length] characters. */
+data class SearchHit(val ref: PageRef, val snippet: String, val start: Int, val length: Int)
+
 @Serializable
 private data class NotebookMeta(val pages: List<String> = emptyList())
 
@@ -164,4 +167,53 @@ class NoteStore(val root: File) {
         if (!file.exists()) writeAtomic(file, bytes)
         return name
     }
+
+    /** Moves trashed page files back as a new last page, under a free name. */
+    fun restorePage(notebook: String, name: String, text: File, canvas: File): PageRef {
+        dir(notebook).mkdirs()
+        val names = pageNames(notebook)
+        val unique = uniqueName(name) { pageExists(notebook, it) }
+        val ref = PageRef(notebook, unique)
+        if (text.exists()) check(text.renameTo(textFile(ref))) { "Could not restore the page." }
+        if (canvas.exists()) check(canvas.renameTo(canvasFile(ref))) { "Could not restore the page." }
+        if (!textFile(ref).exists()) writeAtomic(textFile(ref), ByteArray(0))
+        saveOrder(notebook, names + unique)
+        return ref
+    }
+
+    fun restoreNotebook(folder: File, name: String): String {
+        val existing = notebooks().map { it.name.lowercase() }
+        val unique = uniqueName(name) { it.lowercase() in existing }
+        check(folder.renameTo(dir(unique))) { "Could not restore the notebook." }
+        return unique
+    }
+
+    /** Pages whose name or text contains [query], ignoring case. */
+    fun search(query: String, limit: Int = 50): List<SearchHit> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val hits = ArrayList<SearchHit>()
+        for (book in notebooks()) for (name in pageNames(book.name)) {
+            val ref = PageRef(book.name, name)
+            val text = read(ref).text
+            val plain = text.lineSequence().map { MarkdownText.plain(it) }.filter { it.isNotBlank() }.joinToString("  ")
+            val at = plain.indexOf(q, ignoreCase = true)
+            when {
+                at >= 0 -> {
+                    val from = maxOf(0, at - 40)
+                    val snippet = (if (from > 0) "…" else "") + plain.substring(from, minOf(plain.length, at + q.length + 80))
+                    hits += SearchHit(ref, snippet, at - from + (if (from > 0) 1 else 0), q.length)
+                }
+                name.contains(q, ignoreCase = true) -> hits += SearchHit(ref, plain.take(120), -1, 0)
+            }
+            if (hits.size >= limit) return hits
+        }
+        return hits
+    }
+
+    /** Most recently edited pages across all notebooks. */
+    fun recent(limit: Int = 8): List<PageInfo> =
+        notebooks().flatMap { b -> pageNames(b.name).map { PageRef(b.name, it) } }
+            .sortedByDescending { pageModified(it) }.take(limit)
+            .map { ref -> val d = read(ref); PageInfo(ref, MarkdownText.title(d.text), d.canvas.items, pageModified(ref)) }
 }

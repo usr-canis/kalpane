@@ -14,6 +14,10 @@ The app opens on your notebooks. A notebook holds pages, and each page combines 
 - **Images:** insert from the photo picker, then move, resize, rotate, bring forward, send backward or delete.
 - **Select:** lasso strokes, shapes and images to move, scale, rotate, reorder or delete them together.
 - Undo and redo cover text and drawing. Pinch to zoom.
+- **Search** every page from the home screen; **Recent** jumps back to the latest pages.
+- **Export** a page as PDF or PNG, or a notebook as one PDF, through the share sheet.
+- **Trash:** deleted pages and notebooks can be restored for 30 days.
+- The pen draws through AndroidX Ink's low-latency overlay while the stylus is down.
 
 ## How pages are stored
 
@@ -33,7 +37,7 @@ Pages use a fixed 800-unit width, so drawings stay aligned with text on every sc
 3. In Settings → Sync, enter `owner/repository`, the branch and the token.
 4. Tap the sync button on the home screen.
 
-Sync pulls, merges and pushes in one commit. Notebooks are folders at the top of the repository; files outside notebook folders (such as the README) are left alone. If a page changed both here and on GitHub, your version is kept and GitHub's version is saved alongside it as “(conflict)”. The branch is never force-pushed. The token is encrypted with the Android Keystore and never leaves the device except in requests to api.github.com.
+Sync pulls, merges and pushes in one commit. Notebooks are folders at the top of the repository; files outside notebook folders (such as the README) are left alone. If a page changed both here and on GitHub, your version is kept and GitHub's version is saved alongside it as “(conflict)”. The branch is never force-pushed. *Back up automatically* pulls and pushes every 6 hours on Wi-Fi, and waits while a page is open. The token is encrypted with the Android Keystore and never leaves the device except in requests to api.github.com.
 
 ## Build
 

@@ -18,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,7 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,6 +62,17 @@ fun SyncSection(vm: AppViewModel) {
                 status.expiry?.let { "token expires $it" },
             ).joinToString(" · ")
             Text(details, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val auto by vm.autoBackup.collectAsStateWithLifecycle()
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp).toggleable(value = auto, role = Role.Switch) { vm.setAutoBackup(it) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Back up automatically", style = MaterialTheme.typography.bodyLarge)
+                    Text("Pull and push every 6 hours on Wi-Fi", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = auto, onCheckedChange = null)
+            }
             Spacer(Modifier.height(12.dp))
             Row {
                 Button(onClick = vm::syncNow, enabled = !status.running) {

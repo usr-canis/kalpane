@@ -61,4 +61,48 @@ class NoteStoreTest {
         s.deletePage(ref)
         assertTrue(s.pageNames("A").isEmpty())
     }
+
+    @Test fun trashAndRestorePage() {
+        val s = store()
+        val trash = Trash(tmp.newFolder("trash"))
+        val book = s.createNotebook("A")
+        s.createPage(book)
+        val ref = PageRef(book, "Page 1")
+        s.write(ref, PageData("hello", CanvasDoc()))
+        trash.trashPage(s, ref)
+        assertEquals(listOf("Page 2"), s.pageNames(book))
+        val entry = trash.list().single()
+        assertEquals("Page 1", trash.restore(s, entry.id))
+        assertEquals(listOf("Page 2", "Page 1"), s.pageNames(book))
+        assertEquals("hello", s.read(ref).text)
+        assertTrue(trash.list().isEmpty())
+    }
+
+    @Test fun trashNotebookRestoresUnderFreeName() {
+        val s = store()
+        val trash = Trash(tmp.newFolder("trash"))
+        s.createNotebook("A")
+        trash.trashNotebook(s, "A")
+        s.createNotebook("A")
+        assertEquals("A 2", trash.restore(s, trash.list().single().id))
+    }
+
+    @Test fun purgeRemovesOldItems() {
+        val s = store()
+        val trash = Trash(tmp.newFolder("trash"))
+        val book = s.createNotebook("A")
+        trash.trashPage(s, PageRef(book, "Page 1"), now = 0L)
+        trash.purge(days = 30, now = 31L * 24 * 60 * 60 * 1000)
+        assertTrue(trash.list().isEmpty())
+    }
+
+    @Test fun searchFindsTextAndRecentOrders() {
+        val s = store()
+        val book = s.createNotebook("A")
+        s.write(PageRef(book, "Page 1"), PageData("# Plan\nShip the **release** today", CanvasDoc()))
+        val hit = s.search("RELEASE").single()
+        assertEquals("release", hit.snippet.substring(hit.start, hit.start + hit.length))
+        assertTrue(s.search("missing").isEmpty())
+        assertEquals(PageRef(book, "Page 1"), s.recent(1).single().ref)
+    }
 }
