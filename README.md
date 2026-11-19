@@ -26,6 +26,15 @@ The app opens on your notebooks. A notebook holds pages, and each page combines 
 
 Pages use a fixed 800-unit width, so drawings stay aligned with text on every screen. The same layout is used in your private notes repository.
 
+## Sync with GitHub
+
+1. Create a **private** repository with a README.
+2. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) for only that repository, with **Contents: read and write**.
+3. In Settings → Sync, enter `owner/repository`, the branch and the token.
+4. Tap the sync button on the home screen.
+
+Sync pulls, merges and pushes in one commit. Notebooks are folders at the top of the repository; files outside notebook folders (such as the README) are left alone. If a page changed both here and on GitHub, your version is kept and GitHub's version is saved alongside it as “(conflict)”. The branch is never force-pushed. The token is encrypted with the Android Keystore and never leaves the device except in requests to api.github.com.
+
 ## Build
 
 JDK 17 and Android SDK 36:

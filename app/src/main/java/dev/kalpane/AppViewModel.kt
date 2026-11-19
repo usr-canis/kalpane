@@ -14,6 +14,14 @@ import dev.kalpane.data.NotebookInfo
 import dev.kalpane.data.PageData
 import dev.kalpane.data.PageInfo
 import dev.kalpane.data.PageRef
+import dev.kalpane.data.hash
+import dev.kalpane.data.writeAtomic
+import dev.kalpane.sync.CredentialVault
+import dev.kalpane.sync.GitHubSync
+import dev.kalpane.sync.SyncException
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +35,16 @@ import java.io.File
 enum class ThemeMode { System, Light, Dark }
 
 data class PagesState(val notebook: String, val pages: List<PageInfo>)
+
+/** Sync connection and progress. [repo] is null when not connected. */
+data class SyncStatus(
+    val repo: String? = null,
+    val branch: String = "main",
+    val running: Boolean = false,
+    val lastSync: Long? = null,
+    /** Token expiry date (yyyy-MM-dd) as reported by GitHub, if any. */
+    val expiry: String? = null,
+)
 
 /** An imported image: stored asset name and pixel size. */
 data class ImportedImage(val asset: String, val width: Int, val height: Int)
@@ -50,6 +68,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _fingerDrawing = MutableStateFlow(prefs.getBoolean("fingerDrawing", false))
     val fingerDrawing: StateFlow<Boolean> = _fingerDrawing.asStateFlow()
+
+    private val vault = CredentialVault(app)
+    private val syncDir = File(app.filesDir, "sync").apply { mkdirs() }
+
+    private val _sync = MutableStateFlow(
+        SyncStatus(
+            repo = prefs.getString("syncRepo", null),
+            branch = prefs.getString("syncBranch", "main") ?: "main",
+            lastSync = prefs.getLong("lastSync", 0L).takeIf { it > 0 },
+            expiry = prefs.getString("tokenExpiry", null),
+        )
+    )
+    val sync: StateFlow<SyncStatus> = _sync.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -142,5 +173,80 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    init { refreshNotebooks() }
+    private val baseSerializer = MapSerializer(String.serializer(), String.serializer())
+
+    private fun baseFile(repo: String, branch: String) = File(syncDir, "base-${hash("$repo\n$branch".toByteArray()).take(16)}.json")
+
+    private fun readBase(repo: String, branch: String): Map<String, String> = runCatching {
+        Json.decodeFromString(baseSerializer, baseFile(repo, branch).readText())
+    }.getOrDefault(emptyMap())
+
+    /** Verifies access, then stores the token encrypted on this device. Reports an error message or null. */
+    fun connect(repo: String, branch: String, token: String, onDone: (String?) -> Unit) = viewModelScope.launch {
+        val error = try {
+            val info = withContext(Dispatchers.IO) { GitHubSync(repo.trim(), branch.trim(), token.trim()).verify() }
+            vault.put(repo.trim(), token.trim())
+            val expiry = info.tokenExpiry?.take(10)
+            prefs.edit().putString("syncRepo", repo.trim()).putString("syncBranch", branch.trim())
+                .putString("tokenExpiry", expiry).apply()
+            _sync.value = SyncStatus(repo.trim(), branch.trim(), expiry = expiry)
+            null
+        } catch (e: Exception) {
+            e.message ?: "Could not connect."
+        }
+        onDone(error)
+    }
+
+    fun disconnect() {
+        _sync.value.repo?.let { vault.remove(it) }
+        prefs.edit().remove("syncRepo").remove("syncBranch").remove("tokenExpiry").remove("lastSync").apply()
+        _sync.value = SyncStatus()
+    }
+
+    fun syncNow() {
+        val status = _sync.value
+        val repo = status.repo ?: return
+        if (status.running) return
+        _sync.value = status.copy(running = true)
+        viewModelScope.launch {
+            try {
+                val result = disk {
+                    val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
+                    val client = GitHubSync(repo, status.branch, token)
+                    val result = client.sync(store.root, readBase(repo, status.branch))
+                    writeAtomic(baseFile(repo, status.branch), Json.encodeToString(baseSerializer, result.base).toByteArray())
+                    reloadNotebooks()
+                    _pages.value?.let { reloadPages(it.notebook) }
+                    client.tokenExpiry?.take(10)?.let { prefs.edit().putString("tokenExpiry", it).apply() }
+                    result
+                }
+                val now = System.currentTimeMillis()
+                prefs.edit().putLong("lastSync", now).apply()
+                _sync.value = _sync.value.copy(running = false, lastSync = now, expiry = prefs.getString("tokenExpiry", null))
+                _message.value = when {
+                    result.conflicts > 0 -> "Synced. ${result.conflicts} conflicting ${if (result.conflicts == 1) "page was" else "pages were"} kept as “(conflict)” copies."
+                    result.pulled == 0 && result.pushed == 0 -> "Up to date"
+                    else -> "Synced"
+                }
+            } catch (e: Exception) {
+                _sync.value = _sync.value.copy(running = false)
+                _message.value = e.message ?: "Sync failed. Your notes are safe on this device."
+            }
+        }
+    }
+
+    /** Days until the token expires, if GitHub reported a date. */
+    fun daysUntilExpiry(): Long? = _sync.value.expiry?.let {
+        runCatching { java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), java.time.LocalDate.parse(it)) }.getOrNull()
+    }
+
+    init {
+        refreshNotebooks()
+        daysUntilExpiry()?.let { days ->
+            if (_sync.value.repo != null && days <= 7) {
+                _message.value = if (days < 0) "Your GitHub token has expired. Create a new one in Settings."
+                else "Your GitHub token expires in $days ${if (days == 1L) "day" else "days"}."
+            }
+        }
+    }
 }

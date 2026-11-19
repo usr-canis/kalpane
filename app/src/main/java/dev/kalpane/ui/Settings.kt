@@ -66,6 +66,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
                 Switch(checked = fingerDrawing, onCheckedChange = null)
             }
+            SyncSection(vm)
             SectionLabel("About")
             Text(
                 "Version ${BuildConfig.VERSION_NAME}",

@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -73,6 +75,7 @@ fun MessageHost(vm: AppViewModel, snackbar: SnackbarHostState) {
 @Composable
 fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Unit) {
     val notebooks by vm.notebooks.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<String?>(null) } // "new", "rename:<name>", "delete:<name>"
     LaunchedEffect(Unit) { vm.refreshNotebooks() }
@@ -104,6 +107,12 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                 Spacer(Modifier.width(10.dp))
                 Text("ಕಲ್ಪನೆ", fontFamily = Mallige, fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.weight(1f))
+                if (sync.repo != null) {
+                    IconButton(onClick = vm::syncNow, enabled = !sync.running) {
+                        if (sync.running) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Outlined.Sync, contentDescription = "Sync", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
