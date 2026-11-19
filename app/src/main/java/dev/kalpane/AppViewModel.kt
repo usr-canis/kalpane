@@ -2,17 +2,22 @@ package dev.kalpane
 
 import android.app.Application
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.kalpane.data.MarkdownText
-import dev.kalpane.data.NoteInfo
-import dev.kalpane.data.NoteRef
 import dev.kalpane.data.NoteStore
+import dev.kalpane.data.NotebookInfo
+import dev.kalpane.data.PageData
+import dev.kalpane.data.PageInfo
+import dev.kalpane.data.PageRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,143 +26,121 @@ import java.io.File
 
 enum class ThemeMode { System, Light, Dark }
 
-data class LibraryState(
-    val notebooks: List<String> = emptyList(),
-    val counts: Map<String, Int> = emptyMap(),
-    val selected: String? = null,
-    val query: String = "",
-    val notes: List<NoteInfo> = emptyList(),
-    val loaded: Boolean = false,
-)
+data class PagesState(val notebook: String, val pages: List<PageInfo>)
 
-data class Deleted(val ref: NoteRef, val text: String)
+/** An imported image: stored asset name and pixel size. */
+data class ImportedImage(val asset: String, val width: Int, val height: Int)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val store = NoteStore(File(app.filesDir, "notes"))
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val lock = Mutex() // Fair: queued disk operations run in order.
+    private val images = LruCache<String, ImageBitmap>(40)
 
-    private val _library = MutableStateFlow(LibraryState(selected = prefs.getString("notebook", null)))
-    val library: StateFlow<LibraryState> = _library.asStateFlow()
+    private val _notebooks = MutableStateFlow<List<NotebookInfo>?>(null)
+    val notebooks: StateFlow<List<NotebookInfo>?> = _notebooks.asStateFlow()
+
+    private val _pages = MutableStateFlow<PagesState?>(null)
+    val pages: StateFlow<PagesState?> = _pages.asStateFlow()
 
     private val _theme = MutableStateFlow(
         runCatching { ThemeMode.valueOf(prefs.getString("theme", "System")!!) }.getOrDefault(ThemeMode.System)
     )
     val theme: StateFlow<ThemeMode> = _theme.asStateFlow()
 
+    private val _fingerDrawing = MutableStateFlow(prefs.getBoolean("fingerDrawing", false))
+    val fingerDrawing: StateFlow<Boolean> = _fingerDrawing.asStateFlow()
+
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
     fun clearMessage() { _message.value = null }
 
-    var lastDeleted: Deleted? = null
-        private set
+    private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO) { lock.withLock { block() } }
 
-    init {
-        io {
-            if (store.notebooks().isEmpty()) store.createNotebook("Notes")
-        }
-        refresh()
+    private fun io(block: () -> Unit) = viewModelScope.launch {
+        try { disk(block) } catch (e: Exception) { _message.value = e.message ?: "Something went wrong." }
     }
 
-    private fun io(block: suspend () -> Unit) = viewModelScope.launch {
-        try {
-            withContext(Dispatchers.IO) { lock.withLock { block() } }
-        } catch (e: Exception) {
-            _message.value = e.message ?: "Something went wrong."
-        }
-    }
+    private fun reloadNotebooks() { _notebooks.value = store.notebooks() }
+    private fun reloadPages(notebook: String) { _pages.value = PagesState(notebook, store.pages(notebook)) }
 
-    private fun reload() {
-        val state = _library.value
-        val books = store.notebooks()
-        val selected = state.selected?.takeIf { it in books }
-        val all = store.notes()
-        val counts = all.groupingBy { it.ref.notebook }.eachCount()
-        val notes = store.search(state.query, selected)
-        _library.update { it.copy(notebooks = books, counts = counts, selected = selected, notes = notes, loaded = true) }
-    }
-
-    fun refresh() = io { reload() }
-
-    fun select(notebook: String?) {
-        _library.update { it.copy(selected = notebook) }
-        prefs.edit().putString("notebook", notebook).apply()
-        refresh()
-    }
-
-    fun search(query: String) {
-        _library.update { it.copy(query = query) }
-        refresh()
-    }
+    fun refreshNotebooks() = io { reloadNotebooks() }
+    fun openNotebook(notebook: String) = io { reloadPages(notebook) }
 
     fun setTheme(mode: ThemeMode) {
         _theme.value = mode
         prefs.edit().putString("theme", mode.name).apply()
     }
 
-    /** Creates a note in the selected (or first) notebook and reports it once it exists. */
-    fun newNote(onCreated: (NoteRef) -> Unit) = viewModelScope.launch {
-        val ref = withContext(Dispatchers.IO) {
-            lock.withLock {
-                val book = _library.value.selected ?: store.notebooks().firstOrNull() ?: store.createNotebook("Notes")
-                store.createNote(book)
-            }
-        }
+    fun setFingerDrawing(on: Boolean) {
+        _fingerDrawing.value = on
+        prefs.edit().putBoolean("fingerDrawing", on).apply()
+    }
+
+    fun createNotebook(name: String, onCreated: (String) -> Unit) = viewModelScope.launch {
+        val created = runCatching { disk { store.createNotebook(name).also { reloadNotebooks() } } }
+            .onFailure { _message.value = it.message }.getOrNull() ?: return@launch
+        onCreated(created)
+    }
+
+    fun renameNotebook(old: String, name: String) = io { store.renameNotebook(old, name); reloadNotebooks() }
+    fun deleteNotebook(name: String) = io { store.deleteNotebook(name); reloadNotebooks() }
+
+    fun createPage(notebook: String, onCreated: (PageRef) -> Unit) = viewModelScope.launch {
+        val ref = runCatching { disk { store.createPage(notebook) } }.onFailure { _message.value = it.message }.getOrNull() ?: return@launch
         onCreated(ref)
     }
 
-    suspend fun load(ref: NoteRef): String = withContext(Dispatchers.IO) { lock.withLock { store.read(ref) } }
+    fun renamePage(ref: PageRef, name: String, onRenamed: (PageRef) -> Unit = {}) = viewModelScope.launch {
+        val new = runCatching { disk { store.renamePage(ref, name).also { reloadPages(ref.notebook) } } }
+            .onFailure { _message.value = it.message }.getOrNull() ?: return@launch
+        onRenamed(new)
+    }
 
-    fun save(ref: NoteRef, text: String) = io { store.write(ref, text) }
+    fun deletePage(ref: PageRef) = io { store.deletePage(ref); reloadPages(ref.notebook) }
+    fun movePage(ref: PageRef, offset: Int) = io { store.movePage(ref, offset); reloadPages(ref.notebook) }
 
-    /** Final save when leaving the editor: empty notes are discarded, others take their title as file name. */
-    fun close(ref: NoteRef, text: String) = io {
-        if (MarkdownText.title(text).isEmpty()) {
-            store.delete(ref)
-        } else {
-            store.write(ref, text)
-            store.renameToTitle(ref)
+    suspend fun load(ref: PageRef): PageData = disk { store.read(ref) }
+
+    fun save(ref: PageRef, data: PageData) = io { store.write(ref, data) }
+
+    /** Copies a picked image into the notebook's assets. */
+    suspend fun importImage(notebook: String, uri: Uri): ImportedImage? = try {
+        withContext(Dispatchers.IO) {
+            val resolver = getApplication<Application>().contentResolver
+            val mime = resolver.getType(uri) ?: "image/jpeg"
+            val ext = when {
+                mime.endsWith("png") -> "png"
+                mime.endsWith("webp") -> "webp"
+                mime.endsWith("gif") -> "gif"
+                else -> "jpg"
+            }
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read the image.")
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0) error("Unsupported image.")
+            val asset = lock.withLock { store.importAsset(notebook, bytes, ext) }
+            ImportedImage(asset, bounds.outWidth, bounds.outHeight)
         }
-        reload()
+    } catch (e: Exception) {
+        _message.value = e.message ?: "Could not import the image."
+        null
     }
 
-    fun delete(ref: NoteRef) = io {
-        lastDeleted = Deleted(ref, store.read(ref))
-        store.delete(ref)
-        reload()
-    }
-
-    fun undoDelete() {
-        val deleted = lastDeleted ?: return
-        lastDeleted = null
-        io {
-            val target = if (store.file(deleted.ref).exists()) store.createNote(deleted.ref.notebook) else deleted.ref
-            store.write(target, deleted.text)
-            reload()
+    /** Decodes an asset, downsampled to at most 2048 px on its longer side. */
+    suspend fun image(notebook: String, asset: String): ImageBitmap? {
+        val key = "$notebook/$asset"
+        images.get(key)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            val file = runCatching { store.assetFile(notebook, asset) }.getOrNull()?.takeIf { it.exists() } ?: return@withContext null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.path, bounds)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+                ?.asImageBitmap()?.also { images.put(key, it) }
         }
     }
 
-    fun move(ref: NoteRef, notebook: String) = io { store.move(ref, notebook); reload() }
-
-    fun createNotebook(name: String) = io {
-        val created = store.createNotebook(name)
-        _library.update { it.copy(selected = created) }
-        prefs.edit().putString("notebook", created).apply()
-        reload()
-    }
-
-    fun renameNotebook(old: String, name: String) = io {
-        val renamed = store.renameNotebook(old, name)
-        if (_library.value.selected == old) {
-            _library.update { it.copy(selected = renamed) }
-            prefs.edit().putString("notebook", renamed).apply()
-        }
-        reload()
-    }
-
-    fun deleteNotebook(name: String) = io {
-        store.deleteNotebook(name)
-        if (store.notebooks().isEmpty()) store.createNotebook("Notes")
-        reload()
-    }
+    init { refreshNotebooks() }
 }

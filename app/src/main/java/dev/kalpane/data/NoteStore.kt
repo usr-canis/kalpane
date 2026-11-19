@@ -1,113 +1,166 @@
 package dev.kalpane.data
 
+import kotlinx.serialization.Serializable
 import java.io.File
 
-/** A note is `<root>/<notebook>/<name>.md`. The folder mirrors the notes repository. */
-data class NoteRef(val notebook: String, val name: String) {
+/**
+ * Layout (mirrors the notes repository):
+ * ```
+ * <notebook>/notebook.json        page order
+ * <notebook>/<page>.md            text
+ * <notebook>/<page>.canvas.json   drawings, shapes and images
+ * <notebook>/assets/<sha256>.<ext>
+ * ```
+ */
+data class PageRef(val notebook: String, val name: String) {
     fun encode() = "$notebook/$name"
 
     companion object {
-        fun decode(value: String): NoteRef {
+        fun decode(value: String): PageRef {
             val slash = value.indexOf('/')
-            return NoteRef(value.substring(0, slash), value.substring(slash + 1))
+            return PageRef(value.substring(0, slash), value.substring(slash + 1))
         }
     }
 }
 
-data class NoteInfo(
-    val ref: NoteRef,
-    val title: String,
-    val preview: String,
-    val modified: Long,
-    val text: String,
-)
+data class NotebookInfo(val name: String, val pages: Int, val modified: Long)
+
+data class PageInfo(val ref: PageRef, val preview: String, val items: List<Item>, val modified: Long)
+
+data class PageData(val text: String, val canvas: CanvasDoc)
+
+@Serializable
+private data class NotebookMeta(val pages: List<String> = emptyList())
 
 /** Not thread-safe: callers serialize access. */
 class NoteStore(val root: File) {
-    init {
-        root.mkdirs()
-    }
+    init { root.mkdirs() }
 
     private fun dir(notebook: String) = File(root, notebook)
-    fun file(ref: NoteRef) = File(dir(ref.notebook), "${ref.name}.md")
+    private fun metaFile(notebook: String) = File(dir(notebook), "notebook.json")
+    fun textFile(ref: PageRef) = File(dir(ref.notebook), "${ref.name}.md")
+    fun canvasFile(ref: PageRef) = File(dir(ref.notebook), "${ref.name}.canvas.json")
+    fun assetFile(notebook: String, asset: String): File {
+        require(asset.matches(Regex("[a-f0-9]{64}\\.[a-z]{3,4}"))) { "Invalid asset name." }
+        return File(dir(notebook), "assets/$asset")
+    }
 
-    fun notebooks(): List<String> =
-        root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
-            .orEmpty().map { it.name }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    private fun pageExists(notebook: String, name: String) =
+        File(dir(notebook), "$name.md").exists() || File(dir(notebook), "$name.canvas.json").exists()
 
-    fun notes(notebook: String? = null): List<NoteInfo> {
-        val books = notebook?.let { listOf(it) } ?: notebooks()
-        return books.flatMap { book ->
-            dir(book).listFiles { f -> f.isFile && f.name.endsWith(".md") && !f.name.startsWith(".") }
-                .orEmpty().map { f ->
-                    val text = f.readText()
-                    val ref = NoteRef(book, f.name.removeSuffix(".md"))
-                    NoteInfo(ref, MarkdownText.title(text).ifEmpty { ref.name }, MarkdownText.preview(text), f.lastModified(), text)
-                }
+    fun notebooks(): List<NotebookInfo> =
+        root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }.orEmpty().map { d ->
+            val names = pageNames(d.name)
+            val modified = names.maxOfOrNull { pageModified(PageRef(d.name, it)) } ?: d.lastModified()
+            NotebookInfo(d.name, names.size, modified)
         }.sortedByDescending { it.modified }
+
+    /** Page names in their saved order; pages added outside the app are appended. */
+    fun pageNames(notebook: String): List<String> {
+        val onDisk = dir(notebook).listFiles().orEmpty().mapNotNull { f ->
+            when {
+                f.name.startsWith(".") -> null
+                f.name.endsWith(".canvas.json") -> f.name.removeSuffix(".canvas.json")
+                f.name.endsWith(".md") -> f.name.removeSuffix(".md")
+                else -> null
+            }
+        }.toSet()
+        val saved = runCatching { canvasJson.decodeFromString(NotebookMeta.serializer(), metaFile(notebook).readText()).pages }
+            .getOrDefault(emptyList())
+        return saved.filter { it in onDisk } + onDisk.filter { it !in saved }.sorted()
     }
 
-    fun search(query: String, notebook: String? = null): List<NoteInfo> {
-        val q = query.trim()
-        if (q.isEmpty()) return notes(notebook)
-        return notes(notebook).filter { it.text.contains(q, ignoreCase = true) || it.ref.name.contains(q, ignoreCase = true) }
+    private fun saveOrder(notebook: String, names: List<String>) =
+        writeAtomic(metaFile(notebook), canvasJson.encodeToString(NotebookMeta.serializer(), NotebookMeta(names)).toByteArray())
+
+    private fun pageModified(ref: PageRef) = maxOf(textFile(ref).lastModified(), canvasFile(ref).lastModified())
+
+    fun pages(notebook: String): List<PageInfo> = pageNames(notebook).map { name ->
+        val ref = PageRef(notebook, name)
+        val data = read(ref)
+        PageInfo(ref, MarkdownText.preview(data.text, 240).let { rest ->
+            listOf(MarkdownText.title(data.text), rest).filter { it.isNotEmpty() }.joinToString("\n")
+        }, data.canvas.items, pageModified(ref))
     }
 
-    fun read(ref: NoteRef): String = file(ref).takeIf { it.exists() }?.readText() ?: ""
+    fun read(ref: PageRef): PageData {
+        val text = textFile(ref).takeIf { it.exists() }?.readText() ?: ""
+        val canvas = canvasFile(ref).takeIf { it.exists() }?.let {
+            runCatching { canvasJson.decodeFromString(CanvasDoc.serializer(), it.readText()) }.getOrNull()
+        } ?: CanvasDoc()
+        return PageData(text, canvas)
+    }
 
-    fun write(ref: NoteRef, text: String) = writeAtomic(file(ref), text.toByteArray())
+    fun write(ref: PageRef, data: PageData) {
+        writeAtomic(textFile(ref), data.text.toByteArray())
+        val canvas = canvasFile(ref)
+        if (data.canvas.items.isEmpty()) canvas.delete()
+        else writeAtomic(canvas, canvasJson.encodeToString(CanvasDoc.serializer(), data.canvas).toByteArray())
+    }
 
     fun createNotebook(name: String): String {
-        val unique = uniqueName(safeName(name, "Notebook")) { candidate ->
-            notebooks().any { it.equals(candidate, ignoreCase = true) }
-        }
+        val existing = notebooks().map { it.name.lowercase() }
+        val unique = uniqueName(safeName(name, "Notebook")) { it.lowercase() in existing }
         dir(unique).mkdirs()
+        createPage(unique)
         return unique
     }
 
     fun renameNotebook(old: String, name: String): String {
         val target = safeName(name, old)
         if (target == old) return old
-        val unique = uniqueName(target) { c -> notebooks().any { it.equals(c, ignoreCase = true) && it != old } }
+        val existing = notebooks().map { it.name.lowercase() }.filter { it != old.lowercase() }
+        val unique = uniqueName(target) { it.lowercase() in existing }
         check(dir(old).renameTo(dir(unique))) { "Could not rename notebook." }
         return unique
     }
 
-    fun deleteNotebook(name: String) {
-        dir(name).deleteRecursively()
+    fun deleteNotebook(name: String) { dir(name).deleteRecursively() }
+
+    fun createPage(notebook: String, after: String? = null): PageRef {
+        val names = pageNames(notebook).toMutableList()
+        var n = names.size + 1
+        while (pageExists(notebook, "Page $n")) n++
+        val name = "Page $n"
+        writeAtomic(textFile(PageRef(notebook, name)), ByteArray(0))
+        val at = after?.let { names.indexOf(it) + 1 }?.takeIf { it > 0 } ?: names.size
+        names.add(at, name)
+        saveOrder(notebook, names)
+        return PageRef(notebook, name)
     }
 
-    fun createNote(notebook: String, text: String = ""): NoteRef {
-        dir(notebook).mkdirs()
-        val name = uniqueName("Untitled") { file(NoteRef(notebook, it)).exists() }
-        val ref = NoteRef(notebook, name)
-        write(ref, text)
-        return ref
+    fun renamePage(ref: PageRef, name: String): PageRef {
+        val target = safeName(name, ref.name)
+        if (target == ref.name) return ref
+        val unique = uniqueName(target) { pageExists(ref.notebook, it) }
+        val new = PageRef(ref.notebook, unique)
+        if (textFile(ref).exists()) check(textFile(ref).renameTo(textFile(new))) { "Could not rename page." }
+        if (canvasFile(ref).exists()) check(canvasFile(ref).renameTo(canvasFile(new))) { "Could not rename page." }
+        saveOrder(ref.notebook, pageNames(ref.notebook).map { if (it == ref.name) unique else it }.filter { pageExists(ref.notebook, it) })
+        return new
     }
 
-    fun delete(ref: NoteRef) {
-        file(ref).delete()
+    fun deletePage(ref: PageRef) {
+        textFile(ref).delete()
+        canvasFile(ref).delete()
+        saveOrder(ref.notebook, pageNames(ref.notebook))
     }
 
-    fun move(ref: NoteRef, notebook: String): NoteRef {
-        if (ref.notebook == notebook) return ref
-        dir(notebook).mkdirs()
-        val name = uniqueName(ref.name) { file(NoteRef(notebook, it)).exists() }
-        val target = NoteRef(notebook, name)
-        check(file(ref).renameTo(file(target))) { "Could not move note." }
-        return target
+    fun movePage(ref: PageRef, offset: Int) {
+        val names = pageNames(ref.notebook).toMutableList()
+        val from = names.indexOf(ref.name)
+        val to = (from + offset).coerceIn(0, names.size - 1)
+        if (from < 0 || from == to) return
+        names.add(to, names.removeAt(from))
+        saveOrder(ref.notebook, names)
     }
 
-    /** Renames the file to match the note's title, so the repository stays readable. */
-    fun renameToTitle(ref: NoteRef): NoteRef {
-        val title = MarkdownText.title(read(ref))
-        val wanted = safeName(title)
-        if (wanted == ref.name) return ref
-        if (ref.name.startsWith(wanted) && ref.name.removePrefix(wanted).matches(Regex(" \\d+"))) return ref
-        val name = uniqueName(wanted) { it != ref.name && file(NoteRef(ref.notebook, it)).exists() }
-        val target = NoteRef(ref.notebook, name)
-        if (name == ref.name) return ref
-        check(file(ref).renameTo(file(target))) { "Could not rename note." }
-        return target
+    /** Stores image bytes once per notebook under their SHA-256. */
+    fun importAsset(notebook: String, bytes: ByteArray, extension: String): String {
+        require(bytes.size <= 20 * 1024 * 1024) { "Images must be 20 MB or smaller." }
+        val name = "${hash(bytes)}.${extension.lowercase()}"
+        val file = assetFile(notebook, name)
+        if (!file.exists()) writeAtomic(file, bytes)
+        return name
     }
 }

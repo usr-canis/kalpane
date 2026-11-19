@@ -1,0 +1,173 @@
+package dev.kalpane.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.kalpane.AppViewModel
+import dev.kalpane.data.PAGE_WIDTH
+import dev.kalpane.data.PageInfo
+import dev.kalpane.data.PageRef
+
+@Composable
+fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, onBack: () -> Unit) {
+    val state by vm.pages.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    var dialog by remember { mutableStateOf<Pair<String, PageRef>?>(null) }
+    LaunchedEffect(notebook) { vm.openNotebook(notebook) }
+    MessageHost(vm, snackbar)
+    BackHandler(onBack = onBack)
+    val pages = state?.takeIf { it.notebook == notebook }?.pages
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0),
+        snackbarHost = { SnackbarHost(snackbar, Modifier.navigationBarsPadding()) },
+        topBar = { TopBar(title = notebook, onBack = onBack) },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { vm.createPage(notebook, onOpen) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp),
+                elevation = FloatingActionButtonDefaults.elevation(2.dp, 2.dp, 2.dp, 2.dp),
+                modifier = Modifier.navigationBarsPadding(),
+            ) { Icon(Icons.Filled.Add, contentDescription = "New page") }
+        },
+    ) { padding ->
+        if (pages != null) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(140.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
+                items(pages, key = { it.ref.name }) { page ->
+                    PageCard(
+                        page,
+                        first = page == pages.first(),
+                        last = page == pages.last(),
+                        onOpen = { onOpen(page.ref) },
+                        onAction = { action ->
+                            if (action.startsWith("move")) {
+                                vm.movePage(page.ref, if (action == "move-") -1 else 1)
+                            } else {
+                                dialog = action to page.ref
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    when (val d = dialog) {
+        null -> Unit
+        else -> when (d.first) {
+            "rename" -> NameDialog("Rename page", d.second.name, "Rename", { dialog = null }) { vm.renamePage(d.second, it); dialog = null }
+            "delete" -> ConfirmDialog("Delete page?", "“${d.second.name}” will be deleted.", "Delete", { dialog = null }) {
+                vm.deletePage(d.second); dialog = null
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PageCard(page: PageInfo, first: Boolean, last: Boolean, onOpen: () -> Unit, onAction: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < 0.5f
+    val paper = if (dark) colors.surfaceContainer else Color.White
+    val cache = remember { PathCache() }
+    var menu by remember { mutableStateOf(false) }
+    Column {
+        Box {
+            BoxWithConstraints(
+                Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(10.dp))
+                    .background(paper)
+                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(10.dp))
+                    .combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
+            ) {
+                val k = maxWidth / PAGE_WIDTH.dp // thumbnail dp per page unit
+                if (page.preview.isNotEmpty()) {
+                    Text(
+                        page.preview,
+                        fontSize = (17 * k).sp,
+                        lineHeight = (27 * k).sp,
+                        color = colors.onSurfaceVariant,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.padding(horizontal = (56 * k).dp, vertical = (40 * k).dp),
+                    )
+                }
+                Canvas(Modifier.fillMaxSize()) {
+                    val s = size.width / PAGE_WIDTH
+                    clipRect {
+                        withTransform({ scale(s, s, Offset.Zero) }) {
+                            page.items.forEach { drawItem(it, colors.onSurface, cache, emptyMap(), colors.surfaceContainerHigh) }
+                        }
+                    }
+                }
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onAction("rename") })
+                if (!first) DropdownMenuItem(text = { Text("Move earlier") }, onClick = { menu = false; onAction("move-") })
+                if (!last) DropdownMenuItem(text = { Text("Move later") }, onClick = { menu = false; onAction("move+") })
+                DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onAction("delete") })
+            }
+        }
+        Text(
+            page.ref.name,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp, start = 2.dp),
+        )
+        Text(formatDate(page.modified), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 2.dp))
+    }
+}

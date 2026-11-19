@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,7 +21,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.activity.compose.LocalActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
-import dev.kalpane.data.NoteRef
+import dev.kalpane.data.PageRef
 
 @Composable
 fun KalpaneApp(vm: AppViewModel) {
@@ -32,21 +33,33 @@ fun KalpaneApp(vm: AppViewModel) {
         val style = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
         activity?.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
+    val tools = remember { ToolState() }
     KalpaneTheme(theme) {
-        // "note:<ref>", "settings" or "" for the library.
+        // "" (notebooks), "book:<name>", "page:<notebook>/<page>" or "settings".
         var screen by rememberSaveable { mutableStateOf("") }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Crossfade(targetState = screen, animationSpec = tween(180), label = "screen") { current ->
+            Crossfade(targetState = screen, animationSpec = tween(160), label = "screen") { current ->
                 when {
-                    current.startsWith("note:") -> EditorScreen(
+                    current.startsWith("page:") -> {
+                        val ref = PageRef.decode(current.removePrefix("page:"))
+                        PageScreen(
+                            vm = vm,
+                            ref = ref,
+                            tools = tools,
+                            onBack = { screen = "book:" + ref.notebook },
+                            onRenamed = { screen = "page:" + it.encode() },
+                        )
+                    }
+                    current.startsWith("book:") -> PagesScreen(
                         vm = vm,
-                        ref = NoteRef.decode(current.removePrefix("note:")),
-                        onClose = { screen = "" },
+                        notebook = current.removePrefix("book:"),
+                        onOpen = { screen = "page:" + it.encode() },
+                        onBack = { screen = "" },
                     )
                     current == "settings" -> SettingsScreen(vm, onBack = { screen = "" })
-                    else -> LibraryScreen(
+                    else -> HomeScreen(
                         vm = vm,
-                        onOpen = { screen = "note:" + it.encode() },
+                        onOpen = { screen = "book:$it" },
                         onSettings = { screen = "settings" },
                     )
                 }

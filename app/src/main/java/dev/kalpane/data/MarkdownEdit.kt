@@ -22,6 +22,11 @@ object MarkdownEdit {
         if (nl < 0 || e.text.getOrNull(nl) != '\n') return null
         val prevStart = lineStart(e.text, nl)
         val prev = e.text.substring(prevStart, nl)
+        if (MarkdownSpans.codeBlocks(e.text).any { prevStart in it && prevStart != it.first }) {
+            val indent = prev.takeWhile { it == ' ' || it == '\t' }
+            if (indent.isEmpty()) return null
+            return Edit(e.text.substring(0, e.start) + indent + e.text.substring(e.start), e.start + indent.length)
+        }
         val m = listPrefix.find(prev) ?: return null
         val indent = m.groupValues[1]
         if (prev.length == m.value.length) {
@@ -128,5 +133,26 @@ object MarkdownEdit {
         lines.map { line ->
             if (quoted) line.replaceFirst(Regex("""^(\s*)> ?"""), "$1") else "> $line"
         }
+    }
+
+    /** Indents the selected lines by four spaces, or removes up to four with [outdent]. */
+    fun indent(e: Edit, outdent: Boolean = false): Edit = mapLines(e) { lines ->
+        lines.map { line ->
+            if (!outdent) "    $line"
+            else line.removePrefix(line.take(4).takeWhile { it == ' ' }).let { if (line.startsWith("\t")) line.drop(1) else it }
+        }
+    }
+
+    /** Wraps the selected lines in a fenced code block, with the cursor inside. */
+    fun codeBlock(e: Edit): Edit {
+        val start = lineStart(e.text, e.min)
+        val end = lineEnd(e.text, e.max)
+        val body = e.text.substring(start, end)
+        val before = e.text.substring(0, start)
+        val lead = if (before.isEmpty() || before.endsWith("\n")) "" else "\n"
+        val block = "$lead```\n$body\n```"
+        val text = before + block + e.text.substring(end)
+        val cursor = start + lead.length + 4 + body.length
+        return Edit(text, cursor)
     }
 }

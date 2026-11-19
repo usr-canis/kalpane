@@ -4,19 +4,27 @@ A notes app for Android that combines Markdown text with stylus drawing.
 
 Status: rewrite in progress. The previous version is kept on the `pre-rewrite` branch.
 
-## Writing
+## Using it
 
-Markdown renders as you type; the raw syntax shows only on the line you are editing. Supported: headings, **bold**, *italic*, ~~strike~~, `code`, code blocks, links, lists, checklists (tap to tick), quotes and rules. Enter continues a list; Enter on an empty item ends it. A toolbar above the keyboard has undo/redo and formatting.
+The app opens on your notebooks. A notebook holds pages, and each page combines Markdown text with a drawing layer.
 
-## How notes are stored
+- **Text:** tap with a finger to type. Markdown renders as you type; raw syntax shows only on the line you are editing. Headings, emphasis, links, lists, checklists (tap to tick), quotes, rules and fenced code blocks with basic syntax colouring.
+- **Drawing:** the stylus draws anywhere on the page: pen, highlighter, eraser (whole or partial strokes). Fingers type and scroll unless *Draw with finger* is on in Settings.
+- **Shapes:** line, arrow, rectangle, ellipse. Select one to move, resize or rotate it.
+- **Images:** insert from the photo picker, then move, resize, rotate, bring forward, send backward or delete.
+- **Select:** lasso strokes, shapes and images to move, scale, rotate, reorder or delete them together.
+- Undo and redo cover text and drawing. Pinch to zoom.
 
-Each notebook is a folder and each note is a plain Markdown file:
+## How pages are stored
 
 ```
-<notebook>/<note title>.md
+<notebook>/notebook.json          page order
+<notebook>/<page>.md              text
+<notebook>/<page>.canvas.json     strokes, shapes, image placement
+<notebook>/assets/<sha256>.<ext>  images
 ```
 
-The same layout is used in your private notes repository, so notes stay readable on GitHub.
+Pages use a fixed 800-unit width, so drawings stay aligned with text on every screen. The same layout is used in your private notes repository.
 
 ## Build
 

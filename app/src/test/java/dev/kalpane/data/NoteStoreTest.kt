@@ -9,52 +9,55 @@ import org.junit.rules.TemporaryFolder
 
 class NoteStoreTest {
     @get:Rule val tmp = TemporaryFolder()
-
     private fun store() = NoteStore(tmp.newFolder("notes"))
 
-    @Test fun notesAreMarkdownFilesInNotebookFolders() {
+    @Test fun newNotebookHasOnePage() {
         val s = store()
         val book = s.createNotebook("Work")
-        val ref = s.createNote(book)
-        s.write(ref, "# Plan\n\nShip it")
-        assertEquals("# Plan\n\nShip it", s.file(ref).readText())
-        assertEquals("Work/Untitled.md", s.file(ref).relativeTo(s.root).path)
+        assertEquals(listOf("Page 1"), s.pageNames(book))
+        assertEquals(1, s.notebooks().single().pages)
     }
 
-    @Test fun renameToTitleUsesSafeUniqueNames() {
+    @Test fun pagesKeepOrderAndMove() {
         val s = store()
-        val a = s.createNote("Notes")
-        s.write(a, "# Ideas: a/b?\nbody")
-        assertEquals("Ideas a b", s.renameToTitle(a).name)
-        val b = s.createNote("Notes")
-        s.write(b, "# Ideas: a/b?")
-        assertEquals("Ideas a b 2", s.renameToTitle(b).name)
-        // Already matching names are stable.
-        assertEquals("Ideas a b 2", s.renameToTitle(NoteRef("Notes", "Ideas a b 2")).name)
+        val book = s.createNotebook("A")
+        s.createPage(book); s.createPage(book)
+        assertEquals(listOf("Page 1", "Page 2", "Page 3"), s.pageNames(book))
+        s.movePage(PageRef(book, "Page 3"), -1)
+        assertEquals(listOf("Page 1", "Page 3", "Page 2"), s.pageNames(book))
     }
 
-    @Test fun kannadaTitlesAreKept() {
+    @Test fun textAndCanvasRoundTrip() {
         val s = store()
-        val ref = s.createNote("Notes")
-        s.write(ref, "ಕಲ್ಪನೆ ಟಿಪ್ಪಣಿ")
-        assertEquals("ಕಲ್ಪನೆ ಟಿಪ್ಪಣಿ", s.renameToTitle(ref).name)
+        val ref = PageRef(s.createNotebook("A"), "Page 1")
+        val items = listOf(
+            Stroke(id = "s", points = listOf(1f, 2f, 0.5f, 3f, 4f, 0.5f)),
+            Shape(id = "r", kind = ShapeKind.Rectangle, x = 1f, y = 2f, w = 3f, h = 4f, rotation = 0.5f),
+            Picture(id = "p", asset = "a".repeat(64) + ".png", x = 0f, y = 0f, w = 10f, h = 10f),
+        )
+        s.write(ref, PageData("# Hi", CanvasDoc(items = items)))
+        val back = s.read(ref)
+        assertEquals("# Hi", back.text)
+        assertEquals(items, back.canvas.items)
+        assertEquals("# Hi", s.textFile(ref).readText())
     }
 
-    @Test fun moveSearchAndDelete() {
+    @Test fun renameMovesBothFilesAndKeepsOrder() {
         val s = store()
-        s.createNotebook("A"); s.createNotebook("B")
-        val ref = s.createNote("A", "hello world")
-        val moved = s.move(ref, "B")
-        assertEquals(listOf(moved), s.search("WORLD").map { it.ref })
-        assertTrue(s.search("missing").isEmpty())
-        s.delete(moved)
-        assertFalse(s.file(moved).exists())
+        val book = s.createNotebook("A")
+        s.createPage(book)
+        val ref = PageRef(book, "Page 1")
+        s.write(ref, PageData("x", CanvasDoc(items = listOf(Stroke(points = listOf(0f, 0f, 1f))))))
+        val renamed = s.renamePage(ref, "Ideas")
+        assertEquals(listOf("Ideas", "Page 2"), s.pageNames(book))
+        assertTrue(s.canvasFile(renamed).exists())
+        assertFalse(s.canvasFile(ref).exists())
     }
 
-    @Test fun notebookNamesAreUniqueIgnoringCase() {
+    @Test fun deletePageRemovesFiles() {
         val s = store()
-        assertEquals("Work", s.createNotebook("Work"))
-        assertEquals("work 2", s.createNotebook("work"))
-        assertEquals(listOf("Work", "work 2"), s.notebooks())
+        val ref = PageRef(s.createNotebook("A"), "Page 1")
+        s.deletePage(ref)
+        assertTrue(s.pageNames("A").isEmpty())
     }
 }

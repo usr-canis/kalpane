@@ -49,4 +49,12 @@ class MarkdownSpansTest {
         val text = "# a\n- [ ] \n> \n**\n`\n[x](\n~~~~"
         MarkdownSpans.parse(text).forEach { assertTrue(it.start in 0..it.end && it.end <= text.length) }
     }
+
+    @Test fun codeBlockHighlightingAndLanguage() {
+        val k = kinds("```kotlin\nval x = \"s\" // c\n```")
+        assertTrue(Kind.FenceInfo to "kotlin" in k)
+        assertTrue(Kind.CodeKeyword to "val" in k)
+        assertTrue(Kind.CodeString to "\"s\"" in k)
+        assertTrue(Kind.CodeComment to "// c" in k)
+    }
 }

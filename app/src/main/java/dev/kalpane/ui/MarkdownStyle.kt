@@ -24,6 +24,9 @@ data class MarkdownPalette(
     val accent: Color,
     val codeBackground: Color,
     val rule: Color,
+    val keyword: Color,
+    val string: Color,
+    val number: Color,
 )
 
 private val hidden = SpanStyle(fontSize = 0.5.sp, color = Color.Transparent, letterSpacing = 0.sp)
@@ -67,7 +70,12 @@ fun styleMarkdown(text: String, reveal: IntRange?, p: MarkdownPalette, mono: Fon
             Kind.Italic -> style(SpanStyle(fontStyle = FontStyle.Italic), a, b)
             Kind.Strike -> style(SpanStyle(textDecoration = TextDecoration.LineThrough), a, b)
             Kind.Code -> style(SpanStyle(fontFamily = mono, fontSize = 0.9.em, background = p.codeBackground), a, b)
-            Kind.CodeBlock -> style(SpanStyle(fontFamily = mono, fontSize = 0.88.em, background = p.codeBackground), a, b)
+            Kind.CodeBlock -> style(SpanStyle(fontFamily = mono, fontSize = 0.86.em), a, b)
+            Kind.FenceInfo -> style(SpanStyle(fontFamily = mono, fontSize = 0.75.em, color = p.muted), a, b)
+            Kind.CodeKeyword -> style(SpanStyle(color = p.keyword, fontWeight = FontWeight.Medium), a, b)
+            Kind.CodeString -> style(SpanStyle(color = p.string), a, b)
+            Kind.CodeNumber -> style(SpanStyle(color = p.number), a, b)
+            Kind.CodeComment -> style(SpanStyle(color = p.muted, fontStyle = FontStyle.Italic), a, b)
             Kind.Link -> style(SpanStyle(color = p.accent, textDecoration = TextDecoration.Underline), a, b)
             Kind.Image -> style(dim, a, b)
             Kind.Quote -> if (span.level == 1) {

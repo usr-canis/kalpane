@@ -15,6 +15,9 @@ enum class Kind {
     /** Text of a completed task. */
     Done,
     OrderedMarker, Rule,
+    /** Language name after an opening fence. */
+    FenceInfo,
+    CodeKeyword, CodeString, CodeComment, CodeNumber,
 }
 
 data class MdSpan(val start: Int, val end: Int, val kind: Kind, val level: Int = 0)
@@ -74,8 +77,16 @@ object MarkdownSpans {
             val content = text.substring(s, line.end)
             val block = blocks.firstOrNull { s in it }
             if (block != null) {
-                val isFence = fence.containsMatchIn(content)
-                spans += MdSpan(s, line.end, if (isFence) Kind.Syntax else Kind.CodeBlock)
+                if (fence.containsMatchIn(content)) {
+                    val tick = content.indexOf("```") + 3
+                    spans += MdSpan(s, s + tick, Kind.Syntax)
+                    if (content.length > tick) spans += MdSpan(s + tick, line.end, Kind.FenceInfo)
+                } else {
+                    spans += MdSpan(s, line.end, Kind.CodeBlock)
+                    val language = text.substring(block.first, MarkdownEdit.lineEnd(text, block.first))
+                        .substringAfter("```").trim().lowercase()
+                    CodeHighlighter.tokens(content, language).forEach { (a, b, kind) -> spans += MdSpan(s + a, s + b, kind) }
+                }
                 continue
             }
             if (rule.matches(content) && content.isNotBlank()) {
@@ -158,5 +169,41 @@ object MarkdownSpans {
         emphasis(strike, Kind.Strike)
         emphasis(italicStar, Kind.Italic)
         emphasis(italicUnderscore, Kind.Italic)
+    }
+}
+
+/** Language-agnostic highlighting: comments, strings, numbers and common keywords. */
+object CodeHighlighter {
+    private val keywords = setOf(
+        "if", "else", "for", "while", "do", "return", "break", "continue", "switch", "case", "default", "when", "match",
+        "fun", "function", "def", "fn", "func", "lambda", "class", "struct", "enum", "interface", "trait", "object", "impl",
+        "val", "var", "let", "const", "static", "final", "public", "private", "protected", "internal", "override", "abstract",
+        "import", "from", "package", "export", "module", "use", "as", "in", "is", "not", "and", "or",
+        "try", "catch", "except", "finally", "throw", "throws", "raise", "with", "yield", "async", "await",
+        "new", "this", "self", "super", "true", "false", "null", "nil", "None", "True", "False", "void", "int", "float",
+        "double", "bool", "boolean", "string", "char", "long", "pass", "select", "where", "insert", "update", "delete",
+    )
+    private val hashComments = setOf("py", "python", "sh", "bash", "zsh", "shell", "yaml", "yml", "rb", "ruby", "toml", "r", "perl", "dockerfile", "make", "makefile")
+    private val token = Regex("""(//.*$|/\*.*?\*/|--\s.*$)|("(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|`[^`]*`?)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]+)\b""")
+
+    data class Token(val start: Int, val end: Int, val kind: Kind)
+
+    fun tokens(line: String, language: String): List<Token> {
+        val out = ArrayList<Token>()
+        val hashAt = if (language in hashComments) line.indexOf('#').takeIf { it >= 0 } else null
+        for (m in token.findAll(line)) {
+            if (hashAt != null && m.range.first >= hashAt) break
+            val kind = when {
+                m.groups[1] != null -> Kind.CodeComment
+                m.groups[2] != null -> Kind.CodeString
+                m.groups[3] != null -> Kind.CodeNumber
+                m.groups[4] != null && m.value in keywords -> Kind.CodeKeyword
+                else -> null
+            } ?: continue
+            out += Token(m.range.first, m.range.last + 1, kind)
+            if (kind == Kind.CodeComment) return out
+        }
+        if (hashAt != null) out += Token(hashAt, line.length, Kind.CodeComment)
+        return out
     }
 }

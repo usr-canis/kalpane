@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +30,7 @@ import dev.kalpane.ThemeMode
 @Composable
 fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val theme by vm.theme.collectAsStateWithLifecycle()
+    val fingerDrawing by vm.fingerDrawing.collectAsStateWithLifecycle()
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         TopBar(title = "Settings", onBack = onBack)
@@ -45,6 +48,23 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     Text(mode.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                     RadioButton(selected = theme == mode, onClick = null)
                 }
+            }
+            SectionLabel("Drawing")
+            Row(
+                Modifier.fillMaxWidth().height(64.dp)
+                    .toggleable(value = fingerDrawing, role = Role.Switch) { vm.setFingerDrawing(it) }
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Draw with finger", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "When off, fingers type and scroll; the stylus draws.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = fingerDrawing, onCheckedChange = null)
             }
             SectionLabel("About")
             Text(

@@ -49,4 +49,11 @@ class MarkdownEditTest {
         assertEquals(Edit("[]()", 1), MarkdownEdit.link(Edit("", 0)))
         assertEquals(Edit("[go]()", 5), MarkdownEdit.link(Edit("go", 0, 2)))
     }
+
+    @Test fun codeBlockKeepsIndentAndWraps() {
+        assertEquals(Edit("```\n    a\n    ", 14), MarkdownEdit.onNewline(Edit("```\n    a\n", 10)))
+        assertEquals(Edit("```\nx\n```", 5), MarkdownEdit.codeBlock(Edit("x", 1)))
+        assertEquals("    a", MarkdownEdit.indent(Edit("a", 0)).text)
+        assertEquals("a", MarkdownEdit.indent(Edit("    a", 0), outdent = true).text)
+    }
 }
