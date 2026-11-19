@@ -96,6 +96,8 @@ fun HomeScreen(
     onOpenPage: (PageRef) -> Unit,
     onSettings: () -> Unit,
     onTrash: () -> Unit,
+    initialQuery: String? = null,
+    onQueryUsed: () -> Unit = {},
 ) {
     val notebooks by vm.notebooks.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -103,6 +105,11 @@ fun HomeScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
+    val tags by vm.tags.collectAsStateWithLifecycle()
+    val pinned by vm.pinned.collectAsStateWithLifecycle()
+    LaunchedEffect(initialQuery) {
+        initialQuery?.let { query = it; vm.search(it); onQueryUsed() }
+    }
     var menu by remember { mutableStateOf(false) }
     val sync by vm.sync.collectAsStateWithLifecycle()
     val changes by vm.changes.collectAsStateWithLifecycle()
@@ -170,6 +177,28 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
+                    if (tags.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "tags") {
+                            Column {
+                                SectionTitle("Tags")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(tags.toList(), key = { it.first }) { (tag, count) ->
+                                        Row(
+                                            Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                                .clickable { query = tag; vm.search(tag) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            OctIcon(R.drawable.oct_tag, null, Modifier.size(14.dp), MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(tag.removePrefix("#"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (recent.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "recent") {
                             Column {
@@ -193,9 +222,11 @@ fun HomeScreen(
                         }
                         item(span = { GridItemSpan(maxLineSpan) }, key = "books") { SectionTitle("Notebooks") }
                     }
-                    items(list, key = { it.name }) { book ->
+                    items(list.sortedByDescending { it.name in pinned }, key = { it.name }) { book ->
                         NotebookCard(
                             book,
+                            pinned = book.name in pinned,
+                            onPin = { vm.togglePin(book.name) },
                             changes = if (sync.repo == null) null else changes.keys.count { it.startsWith("${book.name}/") },
                             onGit = { action ->
                                 if (action == "pullbook") {
@@ -247,6 +278,8 @@ fun HomeScreen(
 @Composable
 private fun NotebookCard(
     book: NotebookInfo,
+    pinned: Boolean,
+    onPin: () -> Unit,
     changes: Int?,
     onGit: (String) -> Unit,
     onOpen: () -> Unit,
@@ -264,6 +297,7 @@ private fun NotebookCard(
             ) {
                 Box(Modifier.width(10.dp).fillMaxHeight().background(colors.primary))
                 Box(Modifier.fillMaxSize().padding(16.dp)) {
+                    if (pinned) OctIcon(R.drawable.oct_pin, "Pinned", Modifier.size(16.dp).align(Alignment.TopEnd), colors.primary)
                     if (changes != null && changes > 0) {
                         StatusBadge("$changes", MaterialTheme.colorScheme.primary, Modifier.align(Alignment.BottomEnd))
                     }
@@ -282,6 +316,7 @@ private fun NotebookCard(
                     DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onGit("historybook") })
                     HorizontalDivider()
                 }
+                DropdownMenuItem(text = { Text(if (pinned) "Unpin" else "Pin to top") }, onClick = { menu = false; onPin() })
                 DropdownMenuItem(text = { Text("Export as PDF") }, onClick = { menu = false; onGit("exportbook") })
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                 DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })

@@ -69,6 +69,8 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
     val busy by vm.busy.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<Pair<String, PageRef>?>(null) }
+    var version by remember { mutableStateOf<Pair<PageRef, dev.kalpane.sync.GitHubSync.Commit>?>(null) }
+    version?.let { (ref, c) -> VersionDialog(vm, ref, c, onRestore = { vm.save(ref, it) }) { version = null } }
     LaunchedEffect(notebook) { vm.openNotebook(notebook) }
     MessageHost(vm, snackbar)
     BackHandler(onBack = onBack)
@@ -98,7 +100,7 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { vm.createPage(notebook, onOpen) },
+                onClick = { dialog = "new" to PageRef(notebook, "") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(16.dp),
@@ -139,10 +141,11 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
     when (val d = dialog) {
         null -> Unit
         else -> when (d.first) {
+            "new" -> TemplateDialog(vm, onPick = { t -> dialog = null; vm.createPage(notebook, t, onOpen) }) { dialog = null }
             "push" -> PushDialog(vm, AppViewModel.Scope.Book(notebook)) { dialog = null }
             "historybook" -> HistoryDialog(vm, AppViewModel.Scope.Book(notebook)) { dialog = null }
             "pushpage" -> PushDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
-            "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
+            "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(d.second), onCommit = { version = d.second to it; dialog = null }) { dialog = null }
             "rename" -> NameDialog("Rename page", d.second.name, "Rename", { dialog = null }) { vm.renamePage(d.second, it); dialog = null }
             "delete" -> ConfirmDialog("Move to trash?", "“${d.second.name}” moves to trash. You can restore it for 30 days.", "Move to trash", { dialog = null }) {
                 vm.deletePage(d.second); dialog = null

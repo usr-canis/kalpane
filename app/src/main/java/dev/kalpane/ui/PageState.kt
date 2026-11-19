@@ -128,5 +128,16 @@ class PageState(text: String, items: List<Item>, style: PageStyle) {
 
     fun applyStyle(new: PageStyle) { style = new; version++ }
 
+    /** Replaces the page with another version (undoable). */
+    fun restoreFrom(data: PageData) {
+        push()
+        text = TextFieldValue(data.text)
+        items = data.canvas.items
+        style = data.canvas.style
+        selection = emptySet()
+        lastTextPush = 0
+        version++
+    }
+
     fun data() = PageData(text.text, CanvasDoc(style = style, items = items))
 }

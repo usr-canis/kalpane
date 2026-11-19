@@ -13,6 +13,8 @@ import dev.kalpane.data.PageData
 import dev.kalpane.data.PageInfo
 import dev.kalpane.data.PageRef
 import dev.kalpane.data.SearchHit
+import dev.kalpane.data.Template
+import dev.kalpane.data.Templates
 import dev.kalpane.data.TrashEntry
 import dev.kalpane.data.Paper
 import dev.kalpane.data.writeAtomic
@@ -119,6 +121,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun reloadNotebooks() {
         _notebooks.value = store.notebooks()
         _recent.value = store.recent()
+        _tags.value = store.tags()
     }
     private fun reloadPages(notebook: String) { _pages.value = PagesState(notebook, store.pages(notebook)) }
 
@@ -141,7 +144,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onCreated(created)
     }
 
-    fun renameNotebook(old: String, name: String) = io { store.renameNotebook(old, name); reloadNotebooks() }
+    fun renameNotebook(old: String, name: String) = io {
+        val renamed = store.renameNotebook(old, name)
+        if (old in _pinned.value) setPinned(_pinned.value - old + renamed)
+        reloadNotebooks()
+    }
     fun deleteNotebook(name: String) = io {
         services.trash.trashNotebook(store, name)
         reloadNotebooks(); reloadTrash()
@@ -149,9 +156,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = "Notebook moved to trash"
     }
 
-    fun createPage(notebook: String, onCreated: (PageRef) -> Unit) = viewModelScope.launch {
-        val ref = runCatching { disk { store.createPage(notebook) } }.onFailure { _message.value = it.message }.getOrNull() ?: return@launch
+    fun createPage(notebook: String, template: Template? = null, onCreated: (PageRef) -> Unit) = viewModelScope.launch {
+        val ref = runCatching {
+            disk {
+                store.createPage(notebook).also { ref ->
+                    if (template != null) store.write(ref, Templates.instantiate(template))
+                    reloadPages(notebook)
+                }
+            }
+        }.onFailure { _message.value = it.message }.getOrNull() ?: return@launch
         onCreated(ref)
+    }
+
+    /** Built-in templates followed by pages of the Templates notebook. */
+    suspend fun templates(): List<Template> = disk {
+        val own = if (store.notebooks().any { it.name == Templates.NOTEBOOK }) {
+            store.pageNames(Templates.NOTEBOOK).map { Template(it, store.read(PageRef(Templates.NOTEBOOK, it)), false) }
+        } else emptyList()
+        Templates.builtIn + own
+    }
+
+    /** Copies a page into the Templates notebook. */
+    fun saveAsTemplate(ref: PageRef, data: PageData) = io {
+        if (store.notebooks().none { it.name == Templates.NOTEBOOK }) store.createNotebook(Templates.NOTEBOOK, withPage = false)
+        val created = store.createPage(Templates.NOTEBOOK)
+        val named = store.renamePage(created, ref.name)
+        store.write(named, data)
+        reloadNotebooks()
+        if (_sync.value.repo != null) _changes.value = computeChanges()
+        _message.value = "Saved “${named.name}” to ${Templates.NOTEBOOK}"
     }
 
     fun renamePage(ref: PageRef, name: String, onRenamed: (PageRef) -> Unit = {}) = viewModelScope.launch {
@@ -203,6 +236,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _recent = MutableStateFlow<List<PageInfo>>(emptyList())
     val recent: StateFlow<List<PageInfo>> = _recent.asStateFlow()
+
+    // ---- Links, tags and pins ----
+
+    suspend fun resolveLink(from: String, target: String): PageRef? = disk { store.resolveLink(from, target) }
+    suspend fun backlinks(ref: PageRef): List<PageRef> = disk { store.backlinks(ref) }
+    suspend fun allPages(): List<PageRef> = disk { store.allPages() }
+
+    fun createNamedPage(notebook: String, name: String, onCreated: (PageRef) -> Unit) = viewModelScope.launch {
+        val ref = runCatching { disk { store.createNamedPage(notebook, name) } }.onFailure { _message.value = it.message }.getOrNull() ?: return@launch
+        onCreated(ref)
+    }
+
+    private val _tags = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val tags: StateFlow<Map<String, Int>> = _tags.asStateFlow()
+
+    private val _pinned = MutableStateFlow(prefs.getStringSet("pinned", emptySet())!!.toSet())
+    val pinned: StateFlow<Set<String>> = _pinned.asStateFlow()
+
+    fun togglePin(notebook: String) = setPinned(if (notebook in _pinned.value) _pinned.value - notebook else _pinned.value + notebook)
+
+    private fun setPinned(value: Set<String>) {
+        _pinned.value = value
+        prefs.edit().putStringSet("pinned", value).apply()
+    }
 
     /** Marks a page as open so background backup waits. */
     fun setEditing(on: Boolean) { services.editing = on }
@@ -416,13 +473,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun discard(ref: PageRef, onDone: () -> Unit) = viewModelScope.launch {
         try {
             disk {
-                val status = _sync.value
-                val base = readBase(status.repo!!, status.branch)
-                val c = client()
                 for (path in listOf("${ref.notebook}/${ref.name}.md", "${ref.notebook}/${ref.name}.canvas.json")) {
                     val file = File(store.root, path)
-                    val sha = base[path]
-                    if (sha == null) file.delete() else writeAtomic(file, c.blobBytes(sha))
+                    val bytes = services.baseBytes(path)
+                    if (bytes == null) file.delete() else writeAtomic(file, bytes)
                 }
                 _changes.value = computeChanges()
                 reloadPages(ref.notebook)
@@ -431,6 +485,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             _message.value = e.message ?: "Could not discard changes."
         }
+    }
+
+    /** The page as of the last pull or push, for the diff view. */
+    suspend fun baseVersion(ref: PageRef): PageData = disk {
+        val text = services.baseBytes("${ref.notebook}/${ref.name}.md")?.decodeToString() ?: ""
+        val canvas = services.baseBytes("${ref.notebook}/${ref.name}.canvas.json")?.let {
+            runCatching { dev.kalpane.data.canvasJson.decodeFromString(dev.kalpane.data.CanvasDoc.serializer(), it.decodeToString()) }.getOrNull()
+        } ?: dev.kalpane.data.CanvasDoc()
+        PageData(text, canvas)
+    }
+
+    /** The page as of [commit], or null if it did not exist then. */
+    suspend fun versionAt(ref: PageRef, commit: String): PageData? = try {
+        withContext(Dispatchers.IO) {
+            val c = client()
+            val text = c.fileAt("${ref.notebook}/${ref.name}.md", commit)
+            val canvas = c.fileAt("${ref.notebook}/${ref.name}.canvas.json", commit)
+            if (text == null && canvas == null) null
+            else PageData(
+                text?.decodeToString() ?: "",
+                canvas?.let { runCatching { dev.kalpane.data.canvasJson.decodeFromString(dev.kalpane.data.CanvasDoc.serializer(), it.decodeToString()) }.getOrNull() }
+                    ?: dev.kalpane.data.CanvasDoc(),
+            )
+        }
+    } catch (e: Exception) {
+        _message.value = e.message; null
     }
 
     suspend fun branches(): List<String> = try {
@@ -446,8 +526,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (computeChanges().isNotEmpty()) throw SyncException("Push or discard your changes before switching branch.")
         val repo = status.repo!!
         val token = vault.get(repo) ?: throw SyncException("Add the remote again in Settings.")
-        val base = GitHubSync(repo, name, token).checkout(store.root)
+        val branchClient = GitHubSync(repo, name, token)
+        val base = branchClient.checkout(store.root)
         services.writeBase(repo, name, base)
+        services.storeObjects(base, branchClient)
         prefs.edit().putString("syncBranch", name).apply()
         _sync.value = _sync.value.copy(branch = name)
         "Switched to $name."

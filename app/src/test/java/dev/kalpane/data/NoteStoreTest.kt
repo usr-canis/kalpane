@@ -105,4 +105,18 @@ class NoteStoreTest {
         assertTrue(s.search("missing").isEmpty())
         assertEquals(PageRef(book, "Page 1"), s.recent(1).single().ref)
     }
+
+    @Test fun linksBacklinksAndTags() {
+        val s = store()
+        val a = s.createNotebook("A")
+        val b = s.createNotebook("B")
+        val target = s.createNamedPage(b, "Plan")
+        s.write(PageRef(a, "Page 1"), PageData("Go to [[B/Plan]] #todo", CanvasDoc()))
+        s.write(target, PageData("#todo #idea", CanvasDoc()))
+        assertEquals(target, s.resolveLink(a, "B/Plan"))
+        assertEquals(target, s.resolveLink(a, "plan"))
+        assertEquals(listOf(PageRef(a, "Page 1")), s.backlinks(target))
+        assertEquals(mapOf("#todo" to 2, "#idea" to 1), s.tags())
+        assertEquals(1, s.search("#idea").size)
+    }
 }

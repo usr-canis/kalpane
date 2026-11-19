@@ -133,6 +133,8 @@ fun PushDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Uni
     val sync by vm.sync.collectAsStateWithLifecycle()
     val changes = remember(scope) { vm.changesIn(scope) }
     var message by remember { mutableStateOf(vm.defaultMessage(scope)) }
+    var diffFor by remember { mutableStateOf<dev.kalpane.data.PageRef?>(null) }
+    diffFor?.let { DiffDialog(vm, it) { diffFor = null } }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { OctIcon(R.drawable.oct_git_commit, null) },
@@ -150,7 +152,12 @@ fun PushDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Uni
                 } else {
                     LazyColumn(Modifier.heightIn(max = 200.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(changes) { (path, status) ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            val page = pageOf(path)
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                                    .clickable(enabled = page != null) { diffFor = page },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 OctIcon(diffIcon(status), status.toString(), Modifier.size(16.dp), statusColor(status))
                                 Spacer(Modifier.width(8.dp))
                                 Text(path, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace,
@@ -171,7 +178,12 @@ fun PushDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Uni
 }
 
 @Composable
-fun HistoryDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> Unit) {
+fun HistoryDialog(
+    vm: AppViewModel,
+    scope: AppViewModel.Scope,
+    onCommit: ((GitHubSync.Commit) -> Unit)? = null,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
     var commits by remember { mutableStateOf<List<GitHubSync.Commit>?>(null) }
     LaunchedEffect(scope) { commits = vm.history(scope) }
@@ -188,7 +200,7 @@ fun HistoryDialog(vm: AppViewModel, scope: AppViewModel.Scope, onDismiss: () -> 
                     items(list, key = { it.sha }) { c ->
                         Column(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                                .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(c.url))) }
+                                .clickable { if (onCommit != null) onCommit(c) else context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(c.url))) }
                                 .padding(horizontal = 4.dp, vertical = 10.dp),
                         ) {
                             Text(c.message, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -273,4 +285,17 @@ fun diffIcon(status: Char) = when (status) {
     'A' -> R.drawable.oct_diff_added
     'D' -> R.drawable.oct_diff_removed
     else -> R.drawable.oct_diff_modified
+}
+
+/** The page a changed file belongs to, for its diff. */
+fun pageOf(path: String): dev.kalpane.data.PageRef? {
+    val nb = path.substringBefore('/')
+    val file = path.substringAfter('/')
+    if ('/' in file) return null
+    val name = when {
+        file.endsWith(".canvas.json") -> file.removeSuffix(".canvas.json")
+        file.endsWith(".md") -> file.removeSuffix(".md")
+        else -> return null
+    }
+    return dev.kalpane.data.PageRef(nb, name)
 }

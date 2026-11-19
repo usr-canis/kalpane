@@ -101,11 +101,11 @@ class NoteStore(val root: File) {
         else writeAtomic(canvas, canvasJson.encodeToString(CanvasDoc.serializer(), data.canvas).toByteArray())
     }
 
-    fun createNotebook(name: String): String {
+    fun createNotebook(name: String, withPage: Boolean = true): String {
         val existing = notebooks().map { it.name.lowercase() }
         val unique = uniqueName(safeName(name, "Notebook")) { it.lowercase() in existing }
         dir(unique).mkdirs()
-        createPage(unique)
+        if (withPage) createPage(unique) else saveOrder(unique, emptyList())
         return unique
     }
 
@@ -196,7 +196,8 @@ class NoteStore(val root: File) {
         for (book in notebooks()) for (name in pageNames(book.name)) {
             val ref = PageRef(book.name, name)
             val text = read(ref).text
-            val plain = text.lineSequence().map { MarkdownText.plain(it) }.filter { it.isNotBlank() }.joinToString("  ")
+            val plain = if (q.startsWith("#")) text.lineSequence().filter { it.isNotBlank() }.joinToString("  ")
+            else text.lineSequence().map { MarkdownText.plain(it) }.filter { it.isNotBlank() }.joinToString("  ")
             val at = plain.indexOf(q, ignoreCase = true)
             when {
                 at >= 0 -> {
@@ -216,4 +217,37 @@ class NoteStore(val root: File) {
         notebooks().flatMap { b -> pageNames(b.name).map { PageRef(b.name, it) } }
             .sortedByDescending { pageModified(it) }.take(limit)
             .map { ref -> val d = read(ref); PageInfo(ref, MarkdownText.title(d.text), d.canvas.items, pageModified(ref)) }
+
+    /** All pages, by notebook and order. */
+    fun allPages(): List<PageRef> = notebooks().sortedBy { it.name.lowercase() }.flatMap { b -> pageNames(b.name).map { PageRef(b.name, it) } }
+
+    /** Resolves a `[[target]]` written in [from]: `Notebook/Page`, a page in the same notebook, then any notebook. */
+    fun resolveLink(from: String, target: String): PageRef? {
+        val t = target.trim()
+        if ('/' in t) {
+            val ref = PageRef(t.substringBefore('/').trim(), t.substringAfter('/').trim())
+            if (pageExists(ref.notebook, ref.name)) return ref
+        }
+        if (pageExists(from, t)) return PageRef(from, t)
+        return allPages().firstOrNull { it.name.equals(t, ignoreCase = true) }
+    }
+
+    /** Pages that link to [ref]. */
+    fun backlinks(ref: PageRef): List<PageRef> = allPages().filter { it != ref }.filter { page ->
+        MarkdownSpans.wiki.findAll(read(page).text).any { resolveLink(page.notebook, it.groupValues[1]) == ref }
+    }
+
+    /** Every `#tag` outside code, with how many pages use it. */
+    fun tags(): Map<String, Int> {
+        val counts = HashMap<String, Int>()
+        for (page in allPages()) {
+            val text = read(page).text
+            val spans = MarkdownSpans.parse(text).filter { it.kind == Kind.Tag }
+            spans.map { text.substring(it.start, it.end).lowercase() }.toSet().forEach { counts[it] = (counts[it] ?: 0) + 1 }
+        }
+        return counts.toList().sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first }).toMap()
+    }
+
+    /** Creates a page with a given name at the end of [notebook]. */
+    fun createNamedPage(notebook: String, name: String): PageRef = renamePage(createPage(notebook), name)
 }

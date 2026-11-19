@@ -16,6 +16,9 @@ The app opens on your notebooks. A notebook holds pages, and each page combines 
 - Undo and redo cover text and drawing. Pinch to zoom.
 - **Search** every page from the home screen; **Recent** jumps back to the latest pages.
 - **Export** a page as PDF or PNG, or a notebook as one PDF, through the share sheet.
+- **Links:** `[[Page]]` or `[[Notebook/Page]]` links to another page (tap to open, or create it); each page lists its **backlinks**.
+- **Tags:** `#tag` anywhere in text; tap a tag or pick one on the home screen to see every page with it. Notebooks can be pinned to the top.
+- **Templates:** new pages start from built-in templates (meeting, journal, checklist, lecture, code, sketch) or your own: *Save as template* puts a page in the `Templates` notebook, which is versioned like any other.
 - **Trash:** deleted pages and notebooks can be restored for 30 days.
 - The pen draws through AndroidX Ink's low-latency overlay while the stylus is down.
 
@@ -37,7 +40,7 @@ Pages use a fixed 800-unit width, so drawings stay aligned with text on every sc
 3. In Settings → Remote → **Add remote**, enter `owner/repository`, the branch and the token.
 4. Use **Pull** and **Push** in the Git bar, or on any notebook or page.
 
-Push pulls the same scope first, then commits and pushes it to origin. Notebooks are folders at the top of the repository; files outside notebook folders (such as the README) are left alone. If a page changed both here and on GitHub, your version is kept and GitHub's version is saved alongside it as “(conflict)”. The branch is never force-pushed. *Auto push* pulls and pushes every 6 hours on Wi-Fi, and waits while a page is open. The token is encrypted with the Android Keystore and never leaves the device except in requests to api.github.com.
+Push pulls the same scope first, then commits and pushes it to origin. Notebooks are folders at the top of the repository; files outside notebook folders (such as the README) are left alone. If a page changed both here and on GitHub, your version is kept and GitHub's version is saved alongside it as “(conflict)”. The branch is never force-pushed. **View changes** shows a page's diff against origin, like `git diff`; **History** opens any commit of a page and can restore it. *Auto push* pulls and pushes every 6 hours on Wi-Fi, and waits while a page is open. The token is encrypted with the Android Keystore and never leaves the device except in requests to api.github.com.
 
 ## Build
 

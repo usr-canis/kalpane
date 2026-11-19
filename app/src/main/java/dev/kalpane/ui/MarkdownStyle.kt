@@ -73,6 +73,8 @@ fun styleMarkdown(text: String, reveal: IntRange?, p: MarkdownPalette, mono: Fon
             Kind.Strike -> style(SpanStyle(textDecoration = TextDecoration.LineThrough), a, b)
             Kind.Code -> style(SpanStyle(fontFamily = mono, fontSize = 0.9.em, background = p.codeBackground), a, b)
             Kind.CodeBlock -> style(SpanStyle(fontFamily = mono, fontSize = 0.86.em), a, b)
+            Kind.WikiLink -> style(SpanStyle(color = p.accent, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline), a, b)
+            Kind.Tag -> style(SpanStyle(color = p.accent, background = p.accent.copy(alpha = 0.12f)), a, b)
             Kind.FenceInfo -> style(SpanStyle(fontFamily = mono, fontSize = 0.75.em, color = p.muted), a, b)
             Kind.CodeKeyword -> style(SpanStyle(color = p.keyword, fontWeight = FontWeight.Medium), a, b)
             Kind.CodeString -> style(SpanStyle(color = p.string), a, b)

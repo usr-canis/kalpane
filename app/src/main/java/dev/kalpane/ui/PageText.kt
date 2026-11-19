@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.sp
 import dev.kalpane.data.Edit
 import dev.kalpane.data.MarkdownEdit
+import dev.kalpane.data.Kind
 import dev.kalpane.data.MarkdownSpans
 
 /** Body line height as a multiple of text size; ruled paper uses the same spacing. */
@@ -36,13 +37,28 @@ fun Edit.toValue() = TextFieldValue(text, androidx.compose.ui.text.TextRange(sta
 private val taskBox = Regex("""^\s*[-*+] \[[ xX]]""")
 
 /** Applies a typed change: checkbox taps, list continuation and undo grouping. */
-fun handleTextChange(state: PageState, new: TextFieldValue) {
+fun handleTextChange(
+    state: PageState,
+    new: TextFieldValue,
+    onLink: (String) -> Unit = {},
+    onTag: (String) -> Unit = {},
+) {
     val old = state.text
     if (new.text == old.text) {
         val at = new.selection.start
         if (new.selection.collapsed && at != old.selection.start) {
             val lineStart = MarkdownEdit.lineStart(new.text, at)
             val oldLine = MarkdownEdit.lineStart(old.text, old.selection.start)
+            if (lineStart != oldLine || !state.textFocused) {
+                // A tap on a rendered link or tag follows it instead of placing the cursor.
+                val spans = MarkdownSpans.parse(new.text)
+                spans.firstOrNull { it.kind == Kind.WikiLink && at in it.start - 2..it.end + 2 }?.let {
+                    onLink(new.text.substring(it.start, it.end).trim()); return
+                }
+                spans.firstOrNull { it.kind == Kind.Tag && at in it.start..it.end }?.let {
+                    onTag(new.text.substring(it.start, it.end)); return
+                }
+            }
             val box = taskBox.find(new.text.substring(lineStart, MarkdownEdit.lineEnd(new.text, lineStart)))
             if ((lineStart != oldLine || !state.textFocused) && box != null && at - lineStart in box.range.first..box.range.last + 2) {
                 MarkdownEdit.toggleTask(new.text, lineStart)?.let { toggled ->
@@ -71,6 +87,8 @@ fun PageText(
     state: PageState,
     palette: MarkdownPalette,
     focus: FocusRequester,
+    onLink: (String) -> Unit,
+    onTag: (String) -> Unit,
     font: NoteFont,
     textSize: Float,
     onHeight: (Float) -> Unit,
@@ -87,7 +105,7 @@ fun PageText(
 
     BasicTextField(
         value = value,
-        onValueChange = { handleTextChange(state, it) },
+        onValueChange = { handleTextChange(state, it, onLink, onTag) },
         textStyle = TextStyle(color = colors.onSurface, fontFamily = family, fontSize = textSize.sp, lineHeight = (textSize * LINE_HEIGHT).sp),
         visualTransformation = MarkdownTransformation(reveal, palette, mono, textSize),
         cursorBrush = SolidColor(colors.primary),

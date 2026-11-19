@@ -49,6 +49,7 @@ fun KalpaneApp(vm: AppViewModel) {
     KalpaneTheme(theme) {
         // "" (notebooks), "book:<name>", "page:<notebook>/<page>" or "settings".
         var screen by rememberSaveable { mutableStateOf("") }
+        var search by remember { mutableStateOf<String?>(null) }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Crossfade(targetState = screen, animationSpec = tween(160), label = "screen") { current ->
                 when {
@@ -60,6 +61,7 @@ fun KalpaneApp(vm: AppViewModel) {
                             tools = tools,
                             onBack = { screen = "book:" + ref.notebook },
                             onRenamed = { screen = "page:" + it.encode() },
+                            onTag = { tag -> search = tag; screen = "" },
                         )
                     }
                     current.startsWith("book:") -> PagesScreen(
@@ -76,6 +78,8 @@ fun KalpaneApp(vm: AppViewModel) {
                         onOpenPage = { screen = "page:" + it.encode() },
                         onSettings = { screen = "settings" },
                         onTrash = { screen = "trash" },
+                        initialQuery = search,
+                        onQueryUsed = { search = null },
                     )
                 }
             }

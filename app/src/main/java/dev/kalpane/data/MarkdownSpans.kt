@@ -18,6 +18,10 @@ enum class Kind {
     /** Language name after an opening fence. */
     FenceInfo,
     CodeKeyword, CodeString, CodeComment, CodeNumber,
+    /** Target of a `[[page]]` link. */
+    WikiLink,
+    /** A `#tag`, including the hash. */
+    Tag,
 }
 
 data class MdSpan(val start: Int, val end: Int, val kind: Kind, val level: Int = 0)
@@ -37,6 +41,8 @@ object MarkdownSpans {
     private val escape = Regex("""\\([\\`*_{}\[\]()#+\-.!~>|])""")
     private val codeSpan = Regex("""(`+)([^`]|[^`].*?[^`])\1""")
     private val image = Regex("""!\[([^\]]*)]\(([^)\s]*)\)""")
+    val wiki = Regex("""\[\[([^\[\]\n]+)]]""")
+    val tag = Regex("""(?<![\p{L}\p{N}_#&/])#([\p{L}\p{N}_-]*\p{L}[\p{L}\p{N}_-]*)""")
     private val link = Regex("""\[([^\]]+)]\(([^)\s]+)\)""")
     private val bold = Regex("""(\*\*|__)(?=\S)(.+?)(?<=\S)\1""")
     private val italicStar = Regex("""(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])""")
@@ -142,6 +148,13 @@ object MarkdownSpans {
             add(m.range.last + 1 - tick, m.range.last + 1, Kind.Syntax)
             claim(m.range)
         }
+        wiki.findAll(line).forEach { m ->
+            if (!free(m.range)) return@forEach
+            add(m.range.first, m.range.first + 2, Kind.Syntax)
+            add(m.range.first + 2, m.range.last - 1, Kind.WikiLink)
+            add(m.range.last - 1, m.range.last + 1, Kind.Syntax)
+            claim(m.range)
+        }
         image.findAll(line).forEach { m ->
             if (!free(m.range)) return@forEach
             add(m.range.first, m.range.last + 1, Kind.Image); claim(m.range)
@@ -164,6 +177,10 @@ object MarkdownSpans {
             add(open.last + 1, close.first, kind)
             add(close.first, close.last + 1, Kind.Syntax)
             claim(open); claim(close)
+        }
+        tag.findAll(line).forEach { m ->
+            if (!free(m.range)) return@forEach
+            add(m.range.first, m.range.last + 1, Kind.Tag); claim(m.range)
         }
         emphasis(bold, Kind.Bold)
         emphasis(strike, Kind.Strike)

@@ -292,6 +292,28 @@ class GitHubSync(
         }
     }
 
+    /** Contents of [path] at commit [ref], or null if the file did not exist there. */
+    fun fileAt(path: String, ref: String): ByteArray? {
+        val url = api.toHttpUrl().newBuilder().addPathSegments("repos/$repo/contents")
+            .apply { path.split('/').forEach { addPathSegment(it) } }
+            .addQueryParameter("ref", ref).build()
+        val request = Request.Builder().url(url)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28").build()
+        val response = try { client.newCall(request).execute() } catch (e: IOException) {
+            throw SyncException("Could not reach GitHub.")
+        }
+        response.use { r ->
+            if (r.code == 404) return null
+            if (!r.isSuccessful) throw SyncException("Could not load that version (${r.code}).")
+            val o = json.parseToJsonElement(r.body!!.string()).jsonObject
+            val content = o["content"]?.jsonPrimitive?.content.orEmpty()
+            // Files over 1 MB come without inline content; fetch the blob instead.
+            return if (content.isNotBlank()) Base64.getMimeDecoder().decode(content) else blob(o.str("sha"))
+        }
+    }
+
     /** Page order from both sides: ours first, then pages only they have. */
     private fun mergeOrder(ours: ByteArray, theirs: ByteArray): ByteArray {
         fun pages(bytes: ByteArray) = runCatching {

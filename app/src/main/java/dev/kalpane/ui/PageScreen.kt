@@ -128,7 +128,7 @@ import kotlin.math.min
 private class Viewport { var scale = 1f; var height = 0f }
 
 @Composable
-fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> Unit, onRenamed: (PageRef) -> Unit) {
+fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> Unit, onRenamed: (PageRef) -> Unit, onTag: (String) -> Unit) {
     var state by remember(ref) { mutableStateOf<PageState?>(null) }
     LaunchedEffect(ref) {
         val data = vm.load(ref)
@@ -139,11 +139,19 @@ fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> U
         Box(Modifier.fillMaxSize())
         return
     }
-    PageEditor(vm, ref, s, tools, onBack, onRenamed)
+    PageEditor(vm, ref, s, tools, onBack, onRenamed, onTag)
 }
 
 @Composable
-private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: ToolState, onBack: () -> Unit, onRenamed: (PageRef) -> Unit) {
+private fun PageEditor(
+    vm: AppViewModel,
+    ref: PageRef,
+    s: PageState,
+    tools: ToolState,
+    onBack: () -> Unit,
+    onRenamed: (PageRef) -> Unit,
+    onTag: (String) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val fingerDrawing by vm.fingerDrawing.collectAsStateWithLifecycle()
@@ -163,6 +171,8 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
     var skipSave by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<String?>(null) }
+    var version by remember { mutableStateOf<dev.kalpane.sync.GitHubSync.Commit?>(null) }
+    version?.let { c -> VersionDialog(vm, ref, c, onRestore = { s.restoreFrom(it) }) { version = null } }
 
     // Autosave shortly after changes, and when leaving.
     LaunchedEffect(s.version) {
@@ -215,6 +225,8 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Page style") }, onClick = { menu = false; dialog = "style" })
+                    DropdownMenuItem(text = { Text("Backlinks") }, onClick = { menu = false; dialog = "backlinks" })
+                    DropdownMenuItem(text = { Text("Save as template") }, onClick = { menu = false; vm.saveAsTemplate(ref, s.data()) })
                     DropdownMenuItem(text = { Text("Export as PDF") }, onClick = {
                         menu = false; vm.save(ref, s.data()); scope.launch { exportPage(context, vm, ref, pdf = true) }
                     })
@@ -224,6 +236,9 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
                     if (sync.repo != null) {
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text("Pull page") }, onClick = { menu = false; vm.save(ref, s.data()); vm.pull(AppViewModel.Scope.Page(ref)) })
+                        if (pageStatus(changes, ref.notebook, ref.name) != null) {
+                            DropdownMenuItem(text = { Text("View changes") }, onClick = { menu = false; dialog = "diff" })
+                        }
                         DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; dialog = "history" })
                         if (pageStatus(changes, ref.notebook, ref.name) != null) {
                             DropdownMenuItem(text = { Text("Discard changes") }, onClick = { menu = false; dialog = "discard" })
@@ -240,10 +255,18 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
         })
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            PageSurface(s, controller, fingerDrawing, bitmaps, viewport, vScroll, hScroll, focus, font, size, paperStyle)
+            PageSurface(s, controller, fingerDrawing, bitmaps, viewport, vScroll, hScroll, focus, font, size, paperStyle,
+                onLink = { target ->
+                    scope.launch {
+                        val found = vm.resolveLink(ref.notebook, target)
+                        if (found != null) { vm.save(ref, s.data()); onRenamed(found) } else { dialog = "create:$target" }
+                    }
+                },
+                onTag = { tag -> vm.save(ref, s.data()); onTag(tag) },
+            )
             if (busy != null) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter))
         }
-        if (s.textFocused) FormatBar(s) else Spacer(Modifier.navigationBarsPadding())
+        if (s.textFocused) FormatBar(s, onLinkPage = { dialog = "linkpicker" }) else Spacer(Modifier.navigationBarsPadding())
     }
 
     when (dialog) {
@@ -260,7 +283,21 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
             onBack()
         }
         "push" -> PushDialog(vm, AppViewModel.Scope.Page(ref)) { dialog = null }
-        "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(ref)) { dialog = null }
+        "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(ref), onCommit = { version = it; dialog = null }) { dialog = null }
+        "diff" -> DiffDialog(vm, ref, s.data()) { dialog = null }
+        "backlinks" -> BacklinksDialog(vm, ref, onOpen = { dialog = null; vm.save(ref, s.data()); onRenamed(it) }) { dialog = null }
+        "linkpicker" -> LinkPickerDialog(vm, ref.notebook, onPick = { target ->
+            dialog = null
+            s.setText(MarkdownEdit.toggleWrap(s.text.toEdit(), "[[$target", "]]").let { e -> e.copy(start = e.max + 2, end = e.max + 2) }.toValue(), merge = false)
+        }) { dialog = null }
+        else -> dialog?.takeIf { it.startsWith("create:") }?.let { d ->
+            val name = d.removePrefix("create:")
+            ConfirmDialog("Create page?", "No page called “$name” yet. Create it in ${ref.notebook}?", "Create", { dialog = null }) {
+                dialog = null
+                vm.save(ref, s.data())
+                vm.createNamedPage(ref.notebook, name.substringAfterLast('/'), onRenamed)
+            }
+        }
         "style" -> PageStyleDialog(
             style = PageStyle(font.name, size, paperStyle),
             title = "Page style",
@@ -292,6 +329,8 @@ private fun PageSurface(
     font: NoteFont,
     textSize: Float,
     paperStyle: Paper,
+    onLink: (String) -> Unit,
+    onTag: (String) -> Unit,
 ) {
     val base = LocalDensity.current
     val colors = MaterialTheme.colorScheme
@@ -356,7 +395,7 @@ private fun PageSurface(
                             .canvasInput(controller) { scale },
                     ) {
                         PageText(
-                            s, palette, focus, font, textSize,
+                            s, palette, focus, onLink, onTag, font, textSize,
                             onHeight = { textHeight = it },
                             modifier = Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp),
                         )
@@ -554,7 +593,7 @@ private fun SelectionStrip(s: PageState) {
 }
 
 @Composable
-private fun FormatBar(s: PageState) {
+private fun FormatBar(s: PageState, onLinkPage: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     fun edit(transform: (Edit) -> Edit) = s.setText(transform(s.text.toEdit()).toValue(), merge = false)
     Column(Modifier.fillMaxWidth().background(colors.surface).navigationBarsPadding()) {
@@ -568,6 +607,7 @@ private fun FormatBar(s: PageState) {
             Tool(Icons.Outlined.FormatItalic, "Italic") { edit { MarkdownEdit.toggleWrap(it, "*") } }
             Tool(Icons.Outlined.FormatStrikethrough, "Strikethrough") { edit { MarkdownEdit.toggleWrap(it, "~~") } }
             Tool(Icons.Outlined.Link, "Link") { edit(MarkdownEdit::link) }
+            IconButton(onClick = onLinkPage) { OctIcon(R.drawable.oct_cross_reference, "Link to page", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = colors.outlineVariant)
             Tool(Icons.AutoMirrored.Outlined.FormatListBulleted, "Bulleted list") { edit { MarkdownEdit.toggleList(it, ListKind.Bullet) } }
             Tool(Icons.Outlined.FormatListNumbered, "Numbered list") { edit { MarkdownEdit.toggleList(it, ListKind.Ordered) } }
