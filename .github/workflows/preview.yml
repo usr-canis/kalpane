@@ -2,9 +2,13 @@ name: Publish preview APK
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Existing preview-v* tag to publish'
+      version:
+        description: 'Version name, for example 0.2.0'
         required: true
+        type: string
+      notes:
+        description: 'Release notes (Markdown)'
+        required: false
         type: string
 permissions:
   contents: read
@@ -14,8 +18,6 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,47 +31,42 @@ jobs:
         env:
           PREVIEW_KEYSTORE_BASE64: ${{ secrets.PREVIEW_KEYSTORE_BASE64 }}
         run: |
-          test -n "$PREVIEW_KEYSTORE_BASE64" || { echo 'Set PREVIEW_KEYSTORE_BASE64 to the existing preview development keystore. Do not replace it between updates.'; exit 1; }
+          test -n "$PREVIEW_KEYSTORE_BASE64" || { echo 'Set PREVIEW_KEYSTORE_BASE64 to the existing preview development keystore.'; exit 1; }
           mkdir -p "$HOME/.android"
           printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-      - run: ./gradlew testDebugUnitTest lintDebug assemblePreview --stacktrace
+      - run: ./gradlew testDebugUnitTest lintDebug assemblePreview
         env:
           VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ inputs.version }}
       - name: Prepare release assets
         run: |
           mkdir release-assets
-          cp app/build/outputs/apk/preview/app-preview.apk release-assets/kalpane-preview.apk
-          cd release-assets
-          sha256sum kalpane-preview.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/preview/app-preview.apk "release-assets/kalpane-${{ inputs.version }}-preview.apk"
+          cd release-assets && sha256sum *.apk > SHA256SUMS.txt
+      - name: Remove development signing key from runner
+        if: always()
+        run: rm -f "$HOME/.android/debug.keystore"
       - uses: actions/upload-artifact@v4
         with:
           name: preview-apk
           path: release-assets/
-      - name: Remove development signing key from runner
-        if: always()
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          Path.home().joinpath('.android/debug.keystore').unlink(missing_ok=True)
-          PY
   publish:
-    if: startsWith(inputs.tag, 'preview-v')
     needs: preview
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
       - uses: actions/download-artifact@v4
         with:
           name: preview-apk
           path: release-assets
-      - name: Publish development-signed prerelease
+      - name: Create tag and prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.notes }}
         run: |
-          gh release create "$RELEASE_TAG" release-assets/* --prerelease --verify-tag --title "Kalpane $RELEASE_TAG · Preview" --notes-file docs/PREVIEW_RELEASE.md
+          printf '%s\n\nDevelopment-signed preview. Installs alongside other builds as "dev.kalpane.preview".\n' "$NOTES" > notes.md
+          gh release create "preview-v$VERSION" release-assets/* --target "$GITHUB_SHA" --prerelease \
+            --title "Kalpane $VERSION (preview)" --notes-file notes.md

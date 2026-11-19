@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.kalpane.data.MarkdownText
 import dev.kalpane.data.NoteInfo
 import dev.kalpane.data.NoteRef
 import dev.kalpane.data.NoteStore
@@ -109,9 +110,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun save(ref: NoteRef, text: String) = io { store.write(ref, text) }
 
-    /** Final save when leaving the editor: blank notes are discarded, others take their title as file name. */
+    /** Final save when leaving the editor: empty notes are discarded, others take their title as file name. */
     fun close(ref: NoteRef, text: String) = io {
-        if (text.isBlank()) {
+        if (MarkdownText.title(text).isEmpty()) {
             store.delete(ref)
         } else {
             store.write(ref, text)
