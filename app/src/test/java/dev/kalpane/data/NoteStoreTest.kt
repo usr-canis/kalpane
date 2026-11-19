@@ -35,10 +35,11 @@ class NoteStoreTest {
             Shape(id = "r", kind = ShapeKind.Rectangle, x = 1f, y = 2f, w = 3f, h = 4f, rotation = 0.5f),
             Picture(id = "p", asset = "a".repeat(64) + ".png", x = 0f, y = 0f, w = 10f, h = 10f),
         )
-        s.write(ref, PageData("# Hi", CanvasDoc(items = items)))
+        s.write(ref, PageData("# Hi", CanvasDoc(style = PageStyle("JetBrainsMono", 20f, Paper.Ruled), items = items)))
         val back = s.read(ref)
         assertEquals("# Hi", back.text)
         assertEquals(items, back.canvas.items)
+        assertEquals(Paper.Ruled, back.canvas.style.paper)
         assertEquals("# Hi", s.textFile(ref).readText())
     }
 

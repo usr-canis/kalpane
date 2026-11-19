@@ -195,7 +195,7 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
                 if (state.live.size >= 3) {
                     val points = Geometry.compact(Geometry.smooth(state.live.toList()))
                     val stroke = if (a.highlighter) Stroke(points = points, color = tools.highlighterColor, width = tools.highlighterWidth, highlighter = true)
-                    else Stroke(points = points, color = tools.penColor, width = tools.penWidth)
+                    else Stroke(points = points, color = tools.penColor, width = tools.penWidth, pressure = tools.pressure.value)
                     state.commit(state.items + stroke)
                 }
                 state.live.clear()

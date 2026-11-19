@@ -32,6 +32,8 @@ data class Stroke(
     val color: Int? = null,
     val width: Float = 2.5f,
     val highlighter: Boolean = false,
+    /** How strongly pen pressure changes the width: 0 is none, 1 is strong. */
+    val pressure: Float = 0.65f,
 ) : Item {
     val count get() = points.size / 3
     fun x(i: Int) = points[i * 3]
@@ -62,7 +64,19 @@ data class Picture(
 ) : Item
 
 @Serializable
-data class CanvasDoc(val version: Int = 1, val width: Float = PAGE_WIDTH, val items: List<Item> = emptyList())
+enum class Paper { Plain, Ruled, Dots, Grid }
+
+/** Per-page text and paper settings; null values follow the defaults in Settings. */
+@Serializable
+data class PageStyle(val font: String? = null, val size: Float? = null, val paper: Paper? = null)
+
+@Serializable
+data class CanvasDoc(
+    val version: Int = 1,
+    val width: Float = PAGE_WIDTH,
+    val style: PageStyle = PageStyle(),
+    val items: List<Item> = emptyList(),
+)
 
 val canvasJson = Json { ignoreUnknownKeys = true; encodeDefaults = false; classDiscriminator = "type" }
 

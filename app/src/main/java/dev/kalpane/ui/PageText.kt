@@ -19,12 +19,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.sp
 import dev.kalpane.data.Edit
 import dev.kalpane.data.MarkdownEdit
 import dev.kalpane.data.MarkdownSpans
+
+/** Body line height as a multiple of text size; ruled paper uses the same spacing. */
+const val LINE_HEIGHT = 1.6f
 
 fun TextFieldValue.toEdit() = Edit(text, selection.start, selection.end)
 fun Edit.toValue() = TextFieldValue(text, androidx.compose.ui.text.TextRange(start, end))
@@ -67,11 +71,14 @@ fun PageText(
     state: PageState,
     palette: MarkdownPalette,
     focus: FocusRequester,
+    font: NoteFont,
+    size: Float,
     onHeight: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val mono = appFont(mono = true)
+    val mono = codeFontFamily(font)
+    val family = noteFontFamily(font)
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val density = LocalDensity.current.density
     val value = state.text
@@ -81,8 +88,8 @@ fun PageText(
     BasicTextField(
         value = value,
         onValueChange = { handleTextChange(state, it) },
-        textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface, fontSize = 17.sp, lineHeight = 27.sp),
-        visualTransformation = MarkdownTransformation(reveal, palette, mono),
+        textStyle = TextStyle(color = colors.onSurface, fontFamily = family, fontSize = size.sp, lineHeight = (size * LINE_HEIGHT).sp),
+        visualTransformation = MarkdownTransformation(reveal, palette, mono, size),
         cursorBrush = SolidColor(colors.primary),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         onTextLayout = { layout = it; onHeight(it.size.height / density) },

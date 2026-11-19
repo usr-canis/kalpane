@@ -30,7 +30,8 @@ data class MarkdownPalette(
 )
 
 private val hidden = SpanStyle(fontSize = 0.5.sp, color = Color.Transparent, letterSpacing = 0.sp)
-private val headingSizes = listOf(26, 22, 19, 17, 17, 17)
+/** Heading sizes relative to body text, H1 to H6. */
+val HeadingScale = listOf(1.75f, 1.5f, 1.3f, 1.15f, 1.0f, 0.9f)
 
 /** Character range whose Markdown is shown raw: the selected lines, widened to a whole code block. */
 fun revealRange(text: String, selStart: Int, selEnd: Int): IntRange {
@@ -47,7 +48,7 @@ fun revealRange(text: String, selStart: Int, selEnd: Int): IntRange {
  * offsets map one to one: markup is collapsed rather than removed, and list and task
  * markers are swapped for glyphs of the same length.
  */
-fun styleMarkdown(text: String, reveal: IntRange?, p: MarkdownPalette, mono: FontFamily): AnnotatedString {
+fun styleMarkdown(text: String, reveal: IntRange?, p: MarkdownPalette, mono: FontFamily, base: Float = 17f): AnnotatedString {
     val spans = MarkdownSpans.parse(text)
     val chars = text.toCharArray()
     val styles = ArrayList<AnnotatedString.Range<SpanStyle>>()
@@ -61,10 +62,11 @@ fun styleMarkdown(text: String, reveal: IntRange?, p: MarkdownPalette, mono: Fon
         when (span.kind) {
             Kind.Syntax -> style(if (shown) dim else hidden, a, b)
             Kind.Heading -> {
-                val size = headingSizes[span.level - 1]
-                style(SpanStyle(fontSize = size.sp, fontWeight = if (span.level <= 2) FontWeight.SemiBold else FontWeight.Medium), a, b)
+                val size = base * HeadingScale[span.level - 1]
+                val weight = when (span.level) { 1, 2 -> FontWeight.Bold; 3, 4 -> FontWeight.SemiBold; else -> FontWeight.SemiBold }
+                style(SpanStyle(fontSize = size.sp, fontWeight = weight, color = if (span.level == 6) p.muted else Color.Unspecified), a, b)
                 val lineStart = MarkdownEdit.lineStart(text, a)
-                paragraphs += AnnotatedString.Range(ParagraphStyle(lineHeight = (size * 1.45f).sp), lineStart, b)
+                paragraphs += AnnotatedString.Range(ParagraphStyle(lineHeight = (size * 1.5f).sp), lineStart, b)
             }
             Kind.Bold -> style(SpanStyle(fontWeight = FontWeight.SemiBold), a, b)
             Kind.Italic -> style(SpanStyle(fontStyle = FontStyle.Italic), a, b)
@@ -105,12 +107,13 @@ class MarkdownTransformation(
     private val reveal: IntRange?,
     private val palette: MarkdownPalette,
     private val mono: FontFamily,
+    private val base: Float = 17f,
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString) =
-        TransformedText(styleMarkdown(text.text, reveal, palette, mono), OffsetMapping.Identity)
+        TransformedText(styleMarkdown(text.text, reveal, palette, mono, base), OffsetMapping.Identity)
 
     override fun equals(other: Any?) =
-        other is MarkdownTransformation && other.reveal == reveal && other.palette == palette && other.mono == mono
+        other is MarkdownTransformation && other.reveal == reveal && other.palette == palette && other.mono == mono && other.base == base
 
     override fun hashCode() = (reveal?.hashCode() ?: 0) * 31 + palette.hashCode()
 }

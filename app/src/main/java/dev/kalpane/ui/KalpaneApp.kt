@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.activity.compose.LocalActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
+import dev.kalpane.PenPrefs
+import androidx.compose.runtime.snapshotFlow
 import dev.kalpane.data.PageRef
 
 @Composable
@@ -33,7 +35,17 @@ fun KalpaneApp(vm: AppViewModel) {
         val style = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
         activity?.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
-    val tools = remember { ToolState() }
+    val tools = remember {
+        ToolState().apply {
+            penWidth = vm.penPrefs.width
+            highlighterWidth = vm.penPrefs.highlighterWidth
+            pressure = Pressure.entries.firstOrNull { it.name == vm.penPrefs.pressure } ?: Pressure.Normal
+        }
+    }
+    LaunchedEffect(tools) {
+        snapshotFlow { PenPrefs(tools.penWidth, tools.highlighterWidth, tools.pressure.name) }
+            .collect { vm.savePen(it) }
+    }
     KalpaneTheme(theme) {
         // "" (notebooks), "book:<name>", "page:<notebook>/<page>" or "settings".
         var screen by rememberSaveable { mutableStateOf("") }

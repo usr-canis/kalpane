@@ -26,6 +26,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
 import dev.kalpane.BuildConfig
 import dev.kalpane.ThemeMode
+import dev.kalpane.PageDefaults
+import dev.kalpane.data.PageStyle
+import dev.kalpane.data.Paper
 
 @Composable
 fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
@@ -47,6 +50,13 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 ) {
                     Text(mode.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                     RadioButton(selected = theme == mode, onClick = null)
+                }
+            }
+            SectionLabel("Pages")
+            val defaults by vm.defaults.collectAsStateWithLifecycle()
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                PageStyleControls(PageStyle(defaults.font, defaults.size, defaults.paper)) {
+                    vm.setDefaults(PageDefaults(it.font ?: "Sans", it.size ?: 17f, it.paper ?: Paper.Plain))
                 }
             }
             SectionLabel("Drawing")

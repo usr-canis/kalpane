@@ -28,9 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
@@ -76,6 +75,7 @@ fun MessageHost(vm: AppViewModel, snackbar: SnackbarHostState) {
 fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Unit) {
     val notebooks by vm.notebooks.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
+    val changes by vm.changes.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<String?>(null) } // "new", "rename:<name>", "delete:<name>"
     LaunchedEffect(Unit) { vm.refreshNotebooks() }
@@ -107,16 +107,11 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                 Spacer(Modifier.width(10.dp))
                 Text("ಕಲ್ಪನೆ", fontFamily = Mallige, fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.weight(1f))
-                if (sync.repo != null) {
-                    IconButton(onClick = vm::syncNow, enabled = !sync.running) {
-                        if (sync.running) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Outlined.Sync, contentDescription = "Sync", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            if (sync.repo != null) GitBar(vm, onBranches = { dialog = "branches" }, onPush = { dialog = "push" })
             val list = notebooks
             when {
                 list == null -> Unit
@@ -139,6 +134,14 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
                     items(list, key = { it.name }) { book ->
                         NotebookCard(
                             book,
+                            changes = if (sync.repo == null) null else changes.keys.count { it.startsWith("${book.name}/") },
+                            onGit = { action ->
+                                if (action == "pullbook") {
+                                    vm.pull(AppViewModel.Scope.Book(book.name))
+                                } else {
+                                    dialog = "$action:${book.name}"
+                                }
+                            },
                             onOpen = { onOpen(book.name) },
                             onRename = { dialog = "rename:${book.name}" },
                             onDelete = { dialog = "delete:${book.name}" },
@@ -152,6 +155,10 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
     val d = dialog
     when {
         d == null -> Unit
+        d == "push" -> PushDialog(vm, AppViewModel.Scope.All) { dialog = null }
+        d == "branches" -> BranchDialog(vm) { dialog = null }
+        d.startsWith("pushbook:") -> PushDialog(vm, AppViewModel.Scope.Book(d.removePrefix("pushbook:"))) { dialog = null }
+        d.startsWith("historybook:") -> HistoryDialog(vm, AppViewModel.Scope.Book(d.removePrefix("historybook:"))) { dialog = null }
         d == "new" -> NameDialog("New notebook", "", "Create", { dialog = null }) { name ->
             dialog = null
             vm.createNotebook(name, onOpen)
@@ -174,7 +181,14 @@ fun HomeScreen(vm: AppViewModel, onOpen: (String) -> Unit, onSettings: () -> Uni
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NotebookCard(book: NotebookInfo, onOpen: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun NotebookCard(
+    book: NotebookInfo,
+    changes: Int?,
+    onGit: (String) -> Unit,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     var menu by remember { mutableStateOf(false) }
     Column {
@@ -186,6 +200,9 @@ private fun NotebookCard(book: NotebookInfo, onOpen: () -> Unit, onRename: () ->
             ) {
                 Box(Modifier.width(10.dp).fillMaxHeight().background(colors.primary))
                 Box(Modifier.fillMaxSize().padding(16.dp)) {
+                    if (changes != null && changes > 0) {
+                        StatusBadge("$changes", MaterialTheme.colorScheme.primary, Modifier.align(Alignment.BottomEnd))
+                    }
                     Text(
                         book.name,
                         style = MaterialTheme.typography.titleMedium,
@@ -195,6 +212,12 @@ private fun NotebookCard(book: NotebookInfo, onOpen: () -> Unit, onRename: () ->
                 }
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (changes != null) {
+                    DropdownMenuItem(text = { Text("Push notebook") }, onClick = { menu = false; onGit("pushbook") })
+                    DropdownMenuItem(text = { Text("Pull notebook") }, onClick = { menu = false; onGit("pullbook") })
+                    DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onGit("historybook") })
+                    HorizontalDivider()
+                }
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                 DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
             }

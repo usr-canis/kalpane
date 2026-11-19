@@ -155,4 +155,18 @@ object MarkdownEdit {
         val cursor = start + lead.length + 4 + body.length
         return Edit(text, cursor)
     }
+
+    /** Sets the selected lines to heading [level] (1..6), or plain text with 0. */
+    fun setHeading(e: Edit, level: Int): Edit = mapLines(e) { lines ->
+        lines.map { line ->
+            val bare = line.replace(anyPrefix, "$1").trimStart()
+            if (level == 0) bare else "#".repeat(level) + " " + bare
+        }
+    }
+
+    /** Heading level (0..6) of the line containing [at]. */
+    fun headingLevel(text: String, at: Int): Int {
+        val line = text.substring(lineStart(text, at), lineEnd(text, at))
+        return headingPrefix.find(line)?.groupValues?.get(1)?.length ?: 0
+    }
 }

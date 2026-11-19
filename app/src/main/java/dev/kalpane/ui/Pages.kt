@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,7 +24,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -39,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -58,6 +66,9 @@ import dev.kalpane.data.PageRef
 @Composable
 fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, onBack: () -> Unit) {
     val state by vm.pages.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val changes by vm.changes.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<Pair<String, PageRef>?>(null) }
     LaunchedEffect(notebook) { vm.openNotebook(notebook) }
@@ -69,7 +80,24 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbar, Modifier.navigationBarsPadding()) },
-        topBar = { TopBar(title = notebook, onBack = onBack) },
+        topBar = {
+            Column {
+                TopBar(title = notebook, onBack = onBack) {
+                    if (sync.repo != null) {
+                        IconButton(onClick = { vm.pull(AppViewModel.Scope.Book(notebook)) }, enabled = busy == null) {
+                            Icon(Icons.Outlined.CloudDownload, "Pull notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { dialog = "push" to PageRef(notebook, "") }, enabled = busy == null) {
+                            Icon(Icons.Outlined.CloudUpload, "Push notebook", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { dialog = "historybook" to PageRef(notebook, "") }) {
+                            Icon(Icons.Outlined.History, "Notebook history", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (busy != null) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+            }
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { vm.createPage(notebook, onOpen) },
@@ -92,6 +120,8 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
                 items(pages, key = { it.ref.name }) { page ->
                     PageCard(
                         page,
+                        status = if (sync.repo == null) null else pageStatus(changes, notebook, page.ref.name),
+                        connected = sync.repo != null,
                         first = page == pages.first(),
                         last = page == pages.last(),
                         onOpen = { onOpen(page.ref) },
@@ -111,6 +141,10 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
     when (val d = dialog) {
         null -> Unit
         else -> when (d.first) {
+            "push" -> PushDialog(vm, AppViewModel.Scope.Book(notebook)) { dialog = null }
+            "historybook" -> HistoryDialog(vm, AppViewModel.Scope.Book(notebook)) { dialog = null }
+            "pushpage" -> PushDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
+            "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(d.second)) { dialog = null }
             "rename" -> NameDialog("Rename page", d.second.name, "Rename", { dialog = null }) { vm.renamePage(d.second, it); dialog = null }
             "delete" -> ConfirmDialog("Delete page?", "“${d.second.name}” will be deleted.", "Delete", { dialog = null }) {
                 vm.deletePage(d.second); dialog = null
@@ -121,7 +155,15 @@ fun PagesScreen(vm: AppViewModel, notebook: String, onOpen: (PageRef) -> Unit, o
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PageCard(page: PageInfo, first: Boolean, last: Boolean, onOpen: () -> Unit, onAction: (String) -> Unit) {
+private fun PageCard(
+    page: PageInfo,
+    status: Char?,
+    connected: Boolean,
+    first: Boolean,
+    last: Boolean,
+    onOpen: () -> Unit,
+    onAction: (String) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val dark = colors.background.luminance() < 0.5f
     val paper = if (dark) colors.surfaceContainer else Color.White
@@ -155,7 +197,13 @@ private fun PageCard(page: PageInfo, first: Boolean, last: Boolean, onOpen: () -
                     }
                 }
             }
+            if (status != null) StatusBadge(status.toString(), statusColor(status), Modifier.align(Alignment.TopEnd).padding(8.dp))
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (connected) {
+                    DropdownMenuItem(text = { Text("Push page") }, onClick = { menu = false; onAction("pushpage") })
+                    DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onAction("history") })
+                    HorizontalDivider()
+                }
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onAction("rename") })
                 if (!first) DropdownMenuItem(text = { Text("Move earlier") }, onClick = { menu = false; onAction("move-") })
                 if (!last) DropdownMenuItem(text = { Text("Move later") }, onClick = { menu = false; onAction("move+") })

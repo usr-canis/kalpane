@@ -10,6 +10,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import dev.kalpane.data.CanvasDoc
 import dev.kalpane.data.Item
 import dev.kalpane.data.PageData
+import dev.kalpane.data.PageStyle
 import dev.kalpane.data.Pt
 import dev.kalpane.data.ShapeKind
 
@@ -18,8 +19,13 @@ enum class Tool { Pen, Highlighter, Eraser, Select, Shape }
 /** Ink colours; null follows the theme (dark ink on light paper, light ink on dark). */
 val PenColors: List<Int?> = listOf(null, 0xFFE0730C.toInt(), 0xFFD93025.toInt(), 0xFF1A73E8.toInt(), 0xFF188038.toInt(), 0xFF8E24AA.toInt())
 val HighlighterColors: List<Int> = listOf(0xFFFFD54F.toInt(), 0xFF81C784.toInt(), 0xFFF48FB1.toInt(), 0xFF64B5F6.toInt())
-val PenWidths = listOf(1.5f, 2.5f, 4f)
-val HighlighterWidths = listOf(14f, 22f)
+const val MIN_PEN = 0.5f
+const val MAX_PEN = 12f
+const val MIN_HIGHLIGHTER = 6f
+const val MAX_HIGHLIGHTER = 40f
+
+/** Pen pressure sensitivity presets. */
+enum class Pressure(val label: String, val value: Float) { Off("Off", 0f), Soft("Soft", 0.35f), Normal("Normal", 0.65f), Strong("Strong", 1f) }
 
 @Stable
 class ToolState {
@@ -29,13 +35,17 @@ class ToolState {
     var highlighterColor by mutableStateOf(HighlighterColors[0])
     var highlighterWidth by mutableStateOf(18f)
     var partialEraser by mutableStateOf(false)
+    var pressure by mutableStateOf(Pressure.Normal)
     var shape by mutableStateOf(ShapeKind.Rectangle)
 }
 
 private data class Snapshot(val text: TextFieldValue, val items: List<Item>)
 
 @Stable
-class PageState(text: String, items: List<Item>) {
+class PageState(text: String, items: List<Item>, style: PageStyle) {
+    var style by mutableStateOf(style)
+        private set
+
     var text by mutableStateOf(TextFieldValue(text))
         private set
     var items by mutableStateOf(items)
@@ -116,5 +126,7 @@ class PageState(text: String, items: List<Item>) {
         sync()
     }
 
-    fun data() = PageData(text.text, CanvasDoc(items = items))
+    fun setStyle(new: PageStyle) { style = new; version++ }
+
+    fun data() = PageData(text.text, CanvasDoc(style = style, items = items))
 }

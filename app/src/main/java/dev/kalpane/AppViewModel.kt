@@ -14,11 +14,13 @@ import dev.kalpane.data.NotebookInfo
 import dev.kalpane.data.PageData
 import dev.kalpane.data.PageInfo
 import dev.kalpane.data.PageRef
+import dev.kalpane.data.Paper
 import dev.kalpane.data.hash
 import dev.kalpane.data.writeAtomic
 import dev.kalpane.sync.CredentialVault
 import dev.kalpane.sync.GitHubSync
 import dev.kalpane.sync.SyncException
+import dev.kalpane.sync.SyncPlanner
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -45,6 +47,12 @@ data class SyncStatus(
     /** Token expiry date (yyyy-MM-dd) as reported by GitHub, if any. */
     val expiry: String? = null,
 )
+
+/** Defaults for new and unstyled pages, stored as names so the data layer stays UI-free. */
+data class PageDefaults(val font: String = "Sans", val size: Float = 17f, val paper: Paper = Paper.Plain)
+
+/** Remembered pen settings. */
+data class PenPrefs(val width: Float = 2.5f, val highlighterWidth: Float = 18f, val pressure: String = "Normal")
 
 /** An imported image: stored asset name and pixel size. */
 data class ImportedImage(val asset: String, val width: Int, val height: Int)
@@ -81,6 +89,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     )
     val sync: StateFlow<SyncStatus> = _sync.asStateFlow()
+
+    private val _defaults = MutableStateFlow(
+        PageDefaults(
+            font = prefs.getString("noteFont", "Sans") ?: "Sans",
+            size = prefs.getFloat("textSize", 17f),
+            paper = runCatching { Paper.valueOf(prefs.getString("paper", "Plain")!!) }.getOrDefault(Paper.Plain),
+        )
+    )
+    val defaults: StateFlow<PageDefaults> = _defaults.asStateFlow()
+
+    fun setDefaults(d: PageDefaults) {
+        _defaults.value = d
+        prefs.edit().putString("noteFont", d.font).putFloat("textSize", d.size).putString("paper", d.paper.name).apply()
+    }
+
+    val penPrefs = PenPrefs(
+        prefs.getFloat("penWidth", 2.5f), prefs.getFloat("highlighterWidth", 18f), prefs.getString("pressure", "Normal") ?: "Normal",
+    )
+
+    fun savePen(p: PenPrefs) {
+        prefs.edit().putFloat("penWidth", p.width).putFloat("highlighterWidth", p.highlighterWidth).putString("pressure", p.pressure).apply()
+    }
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -133,7 +163,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun load(ref: PageRef): PageData = disk { store.read(ref) }
 
-    fun save(ref: PageRef, data: PageData) = io { store.write(ref, data) }
+    fun save(ref: PageRef, data: PageData) = io {
+        store.write(ref, data)
+        if (_sync.value.repo != null) _changes.value = computeChanges()
+    }
 
     /** Copies a picked image into the notebook's assets. */
     suspend fun importImage(notebook: String, uri: Uri): ImportedImage? = try {
@@ -190,6 +223,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             prefs.edit().putString("syncRepo", repo.trim()).putString("syncBranch", branch.trim())
                 .putString("tokenExpiry", expiry).apply()
             _sync.value = SyncStatus(repo.trim(), branch.trim(), expiry = expiry)
+            refreshStatus()
             null
         } catch (e: Exception) {
             e.message ?: "Could not connect."
@@ -201,38 +235,203 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _sync.value.repo?.let { vault.remove(it) }
         prefs.edit().remove("syncRepo").remove("syncBranch").remove("tokenExpiry").remove("lastSync").apply()
         _sync.value = SyncStatus()
+        _changes.value = emptyMap()
     }
 
-    fun syncNow() {
+    // ---- Git: status, pull, push, branches, history ----
+
+    private val shaCache = HashMap<String, Triple<Long, Long, String>>()
+
+    /** Local changes since the last sync: path → 'M', 'A' or 'D'. Empty when not connected. */
+    private val _changes = MutableStateFlow<Map<String, Char>>(emptyMap())
+    val changes: StateFlow<Map<String, Char>> = _changes.asStateFlow()
+
+    private val _busy = MutableStateFlow<String?>(null)
+    /** Label of the Git operation in progress, if any. */
+    val busy: StateFlow<String?> = _busy.asStateFlow()
+
+    private fun scanCached(): Map<String, String> {
+        val root = store.root
+        val out = HashMap<String, String>()
+        root.walkTopDown().filter { it.isFile }.forEach { f ->
+            val rel = f.relativeTo(root).invariantSeparatorsPath
+            if (!SyncPlanner.isNotePath(rel)) return@forEach
+            val cached = shaCache[rel]
+            val sha = if (cached != null && cached.first == f.length() && cached.second == f.lastModified()) cached.third
+            else SyncPlanner.blobSha(f.readBytes()).also { shaCache[rel] = Triple(f.length(), f.lastModified(), it) }
+            out[rel] = sha
+        }
+        return out
+    }
+
+    private fun computeChanges(): Map<String, Char> {
         val status = _sync.value
-        val repo = status.repo ?: return
-        if (status.running) return
-        _sync.value = status.copy(running = true)
+        val repo = status.repo ?: return emptyMap()
+        val base = readBase(repo, status.branch)
+        val local = scanCached()
+        val out = HashMap<String, Char>()
+        local.forEach { (path, sha) -> if (base[path] == null) out[path] = 'A' else if (base[path] != sha) out[path] = 'M' }
+        base.keys.filter { it !in local }.forEach { out[it] = 'D' }
+        return out
+    }
+
+    fun refreshStatus() = io { _changes.value = computeChanges() }
+
+    /** What a Git operation covers. */
+    sealed interface Scope {
+        val label: String
+        data object All : Scope { override val label = "all notebooks" }
+        data class Book(val name: String) : Scope { override val label get() = name }
+        data class Page(val ref: PageRef) : Scope { override val label get() = "${ref.notebook} / ${ref.name}" }
+    }
+
+    private fun predicate(scope: Scope): (String) -> Boolean = when (scope) {
+        Scope.All -> { _ -> true }
+        is Scope.Book -> { p -> p.startsWith("${scope.name}/") }
+        is Scope.Page -> {
+            val nb = scope.ref.notebook
+            val assets = store.read(scope.ref).canvas.items.filterIsInstance<dev.kalpane.data.Picture>().map { "$nb/assets/${it.asset}" }.toSet()
+            val own = setOf("$nb/${scope.ref.name}.md", "$nb/${scope.ref.name}.canvas.json", "$nb/notebook.json")
+            ({ p -> p in own || p in assets })
+        }
+    }
+
+    /** Changed files within [scope], for the commit dialog. */
+    fun changesIn(scope: Scope): List<Pair<String, Char>> {
+        val pageFiles = (scope as? Scope.Page)?.let { listOf("${it.ref.notebook}/${it.ref.name}.md", "${it.ref.notebook}/${it.ref.name}.canvas.json") }
+        return _changes.value.filter { (path, _) ->
+            when (scope) {
+                Scope.All -> true
+                is Scope.Book -> path.startsWith("${scope.name}/")
+                is Scope.Page -> path in pageFiles!! || (path.startsWith("${scope.ref.notebook}/assets/"))
+            }
+        }.toList().sortedBy { it.first }
+    }
+
+    fun defaultMessage(scope: Scope) = when (scope) {
+        Scope.All -> "Update notes"
+        is Scope.Book -> "Update ${scope.name}"
+        is Scope.Page -> "Update ${scope.ref.notebook}/${scope.ref.name}"
+    }
+
+    private fun client(): GitHubSync {
+        val status = _sync.value
+        val repo = status.repo ?: throw SyncException("Connect a repository in Settings.")
+        val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
+        return GitHubSync(repo, status.branch, token)
+    }
+
+    private fun git(label: String, block: () -> String?) {
+        if (_busy.value != null) return
+        _busy.value = label
         viewModelScope.launch {
             try {
-                val result = disk {
-                    val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
-                    val client = GitHubSync(repo, status.branch, token)
-                    val result = client.sync(store.root, readBase(repo, status.branch))
-                    writeAtomic(baseFile(repo, status.branch), Json.encodeToString(baseSerializer, result.base).toByteArray())
+                val message = disk {
+                    val result = block()
                     reloadNotebooks()
                     _pages.value?.let { reloadPages(it.notebook) }
-                    client.tokenExpiry?.take(10)?.let { prefs.edit().putString("tokenExpiry", it).apply() }
+                    _changes.value = computeChanges()
                     result
                 }
-                val now = System.currentTimeMillis()
-                prefs.edit().putLong("lastSync", now).apply()
-                _sync.value = _sync.value.copy(running = false, lastSync = now, expiry = prefs.getString("tokenExpiry", null))
-                _message.value = when {
-                    result.conflicts > 0 -> "Synced. ${result.conflicts} conflicting ${if (result.conflicts == 1) "page was" else "pages were"} kept as “(conflict)” copies."
-                    result.pulled == 0 && result.pushed == 0 -> "Up to date"
-                    else -> "Synced"
-                }
+                message?.let { _message.value = it }
             } catch (e: Exception) {
-                _sync.value = _sync.value.copy(running = false)
-                _message.value = e.message ?: "Sync failed. Your notes are safe on this device."
+                _message.value = e.message ?: "$label failed. Your notes are safe on this device."
+            } finally {
+                _busy.value = null
             }
         }
+    }
+
+    private fun runGit(scope: Scope, mode: GitHubSync.Mode, message: String): String {
+        val status = _sync.value
+        val repo = status.repo!!
+        val c = client()
+        val result = c.run(store.root, readBase(repo, status.branch), mode, message.ifBlank { defaultMessage(scope) }, predicate(scope))
+        writeAtomic(baseFile(repo, status.branch), Json.encodeToString(baseSerializer, result.base).toByteArray())
+        c.tokenExpiry?.take(10)?.let { prefs.edit().putString("tokenExpiry", it).apply() }
+        val now = System.currentTimeMillis()
+        prefs.edit().putLong("lastSync", now).apply()
+        _sync.value = _sync.value.copy(lastSync = now, expiry = prefs.getString("tokenExpiry", null))
+        val conflicts = if (result.conflicts > 0) " ${result.conflicts} conflicting ${if (result.conflicts == 1) "page" else "pages"} saved as “(conflict)”." else ""
+        return when {
+            mode == GitHubSync.Mode.Push && result.pushed > 0 ->
+                "Pushed ${result.pushed} ${if (result.pushed == 1) "file" else "files"} to ${status.branch} · ${result.head.take(7)}.$conflicts"
+            result.pulled > 0 -> "Pulled ${result.pulled} ${if (result.pulled == 1) "change" else "changes"} from ${status.branch}.$conflicts"
+            else -> "Already up to date.$conflicts"
+        }
+    }
+
+    fun pull(scope: Scope = Scope.All) = git("Pull") { runGit(scope, GitHubSync.Mode.Pull, "") }
+
+    /** Pulls the same scope first, then commits and pushes it. */
+    fun push(scope: Scope, message: String) = git("Push") { runGit(scope, GitHubSync.Mode.Push, message) }
+
+    fun syncNow() = push(Scope.All, defaultMessage(Scope.All))
+
+    /** Restores a page to its last synced version. */
+    fun discard(ref: PageRef, onDone: () -> Unit) = viewModelScope.launch {
+        try {
+            disk {
+                val status = _sync.value
+                val base = readBase(status.repo!!, status.branch)
+                val c = client()
+                for (path in listOf("${ref.notebook}/${ref.name}.md", "${ref.notebook}/${ref.name}.canvas.json")) {
+                    val file = File(store.root, path)
+                    val sha = base[path]
+                    if (sha == null) file.delete() else writeAtomic(file, c.blobBytes(sha))
+                }
+                _changes.value = computeChanges()
+                reloadPages(ref.notebook)
+            }
+            onDone()
+        } catch (e: Exception) {
+            _message.value = e.message ?: "Could not discard changes."
+        }
+    }
+
+    suspend fun branches(): List<String> = try {
+        withContext(Dispatchers.IO) { client().branches() }
+    } catch (e: Exception) {
+        _message.value = e.message; emptyList()
+    }
+
+    /** Switches branch. With local changes this is refused, as in `git checkout`. */
+    fun switchBranch(name: String) = git("Switch branch") {
+        val status = _sync.value
+        if (name == status.branch) return@git null
+        if (computeChanges().isNotEmpty()) throw SyncException("Push or discard your changes before switching branch.")
+        val repo = status.repo!!
+        val token = vault.get(repo) ?: throw SyncException("Reconnect GitHub in Settings.")
+        val base = GitHubSync(repo, name, token).checkout(store.root)
+        writeAtomic(baseFile(repo, name), Json.encodeToString(baseSerializer, base).toByteArray())
+        prefs.edit().putString("syncBranch", name).apply()
+        _sync.value = _sync.value.copy(branch = name)
+        "Switched to $name."
+    }
+
+    /** Creates a branch from the current one and switches to it, keeping local changes (`git switch -c`). */
+    fun createBranch(name: String) = git("Create branch") {
+        val status = _sync.value
+        val repo = status.repo!!
+        client().createBranch(name.trim())
+        val base = readBase(repo, status.branch)
+        writeAtomic(baseFile(repo, name.trim()), Json.encodeToString(baseSerializer, base).toByteArray())
+        prefs.edit().putString("syncBranch", name.trim()).apply()
+        _sync.value = _sync.value.copy(branch = name.trim())
+        "Created and switched to ${name.trim()}."
+    }
+
+    suspend fun history(scope: Scope): List<GitHubSync.Commit> = try {
+        withContext(Dispatchers.IO) {
+            val paths = when (scope) {
+                Scope.All -> listOf("")
+                is Scope.Book -> listOf(scope.name)
+                is Scope.Page -> listOf("${scope.ref.notebook}/${scope.ref.name}.md", "${scope.ref.notebook}/${scope.ref.name}.canvas.json")
+            }
+            client().history(paths)
+        }
+    } catch (e: Exception) {
+        _message.value = e.message; emptyList()
     }
 
     /** Days until the token expires, if GitHub reported a date. */
@@ -242,6 +441,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshNotebooks()
+        refreshStatus()
         daysUntilExpiry()?.let { days ->
             if (_sync.value.repo != null && days <= 7) {
                 _message.value = if (days < 0) "Your GitHub token has expired. Create a new one in Settings."

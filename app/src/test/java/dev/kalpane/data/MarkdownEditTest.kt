@@ -56,4 +56,10 @@ class MarkdownEditTest {
         assertEquals("    a", MarkdownEdit.indent(Edit("a", 0)).text)
         assertEquals("a", MarkdownEdit.indent(Edit("    a", 0), outdent = true).text)
     }
+
+    @Test fun headingLevels() {
+        assertEquals("###### Note", MarkdownEdit.setHeading(Edit("- Note", 0), 6).text)
+        assertEquals("Note", MarkdownEdit.setHeading(Edit("## Note", 0), 0).text)
+        assertEquals(4, MarkdownEdit.headingLevel("x\n#### y", 3))
+    }
 }

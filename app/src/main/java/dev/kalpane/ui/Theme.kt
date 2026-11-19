@@ -12,10 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import dev.kalpane.R
 import dev.kalpane.ThemeMode
 import android.graphics.fonts.FontFamily as PlatformFontFamily
@@ -58,42 +55,49 @@ private val DarkColors = darkColorScheme(
     error = Color(0xFFF2B8B5),
 )
 
-/** Roboto / JetBrains Mono, both falling back to Mallige for Kannada. */
+/** Fonts offered for page text. Sans is the system font; the others are bundled under the OFL. */
+enum class NoteFont(val label: String, val res: Int?, val mono: Boolean) {
+    Sans("Sans", null, false),
+    JetBrainsMono("JetBrains Mono", R.font.jetbrains_mono, true),
+    GoogleSansCode("Google Sans Code", R.font.google_sans_code, true),
+    IntelOneMono("Intel One Mono", R.font.intel_one_mono, true),
+}
+
+/** Builds weight-aware typefaces from the variable fonts, falling back to Mallige for Kannada. */
 object Typefaces {
-    private val cache = mutableMapOf<Int, Typeface>()
+    private val cache = mutableMapOf<NoteFont, Typeface>()
+    private val weights = listOf(400, 500, 600, 700)
 
     @Synchronized
-    fun get(context: Context, font: Int): Typeface = cache.getOrPut(font) {
-        fun family(id: Int) = PlatformFontFamily.Builder(Font.Builder(context.resources, id).build()).build()
-        Typeface.CustomFallbackBuilder(family(font))
-            .addCustomFallback(family(R.font.mallige))
-            .setSystemFallback(if (font == R.font.jetbrains_mono) "monospace" else "sans-serif")
+    fun get(context: Context, font: NoteFont): Typeface = cache.getOrPut(font) {
+        val kannada = PlatformFontFamily.Builder(Font.Builder(context.resources, R.font.mallige).build()).build()
+        val res = font.res ?: return@getOrPut Typeface.create("sans-serif", Typeface.NORMAL)
+        val fonts = weights.map { w ->
+            Font.Builder(context.resources, res).setWeight(w).setFontVariationSettings("'wght' $w").build()
+        }
+        val family = PlatformFontFamily.Builder(fonts.first()).apply { fonts.drop(1).forEach { addFont(it) } }.build()
+        Typeface.CustomFallbackBuilder(family)
+            .addCustomFallback(kannada)
+            .setSystemFallback("monospace")
             .build()
     }
 }
 
 @Composable
-fun appFont(mono: Boolean = false): FontFamily {
+fun noteFontFamily(font: NoteFont): FontFamily {
     val context = LocalContext.current
-    val id = if (mono) R.font.jetbrains_mono else R.font.roboto
-    return remember(id) { FontFamily(Typefaces.get(context, id)) }
+    return remember(font) { if (font.res == null) FontFamily.SansSerif else FontFamily(Typefaces.get(context, font)) }
 }
+
+/** Font for code: the page font when it is monospaced, otherwise JetBrains Mono. */
+@Composable
+fun codeFontFamily(font: NoteFont) = noteFontFamily(if (font.mono) font else NoteFont.JetBrainsMono)
 
 @Composable
 fun isDark(mode: ThemeMode) = mode == ThemeMode.Dark || (mode == ThemeMode.System && isSystemInDarkTheme())
 
 @Composable
 fun KalpaneTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    val sans = appFont()
-    val base = Typography()
-    fun TextStyle.f() = copy(fontFamily = sans)
-    val typography = Typography(
-        displayLarge = base.displayLarge.f(), displayMedium = base.displayMedium.f(), displaySmall = base.displaySmall.f(),
-        headlineLarge = base.headlineLarge.f(), headlineMedium = base.headlineMedium.f(), headlineSmall = base.headlineSmall.f(),
-        titleLarge = base.titleLarge.f().copy(fontWeight = FontWeight.Medium, fontSize = 20.sp),
-        titleMedium = base.titleMedium.f(), titleSmall = base.titleSmall.f(),
-        bodyLarge = base.bodyLarge.f(), bodyMedium = base.bodyMedium.f(), bodySmall = base.bodySmall.f(),
-        labelLarge = base.labelLarge.f(), labelMedium = base.labelMedium.f(), labelSmall = base.labelSmall.f(),
-    )
-    MaterialTheme(colorScheme = if (isDark(mode)) DarkColors else LightColors, typography = typography, content = content)
+    // App screens use the system font; pages choose their own font.
+    MaterialTheme(colorScheme = if (isDark(mode)) DarkColors else LightColors, typography = Typography(), content = content)
 }

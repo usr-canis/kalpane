@@ -94,7 +94,7 @@ class NoteStore(val root: File) {
     fun write(ref: PageRef, data: PageData) {
         writeAtomic(textFile(ref), data.text.toByteArray())
         val canvas = canvasFile(ref)
-        if (data.canvas.items.isEmpty()) canvas.delete()
+        if (data.canvas.items.isEmpty() && data.canvas.style == PageStyle()) canvas.delete()
         else writeAtomic(canvas, canvasJson.encodeToString(CanvasDoc.serializer(), data.canvas).toByteArray())
     }
 

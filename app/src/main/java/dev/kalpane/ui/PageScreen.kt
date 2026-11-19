@@ -1,6 +1,20 @@
 package dev.kalpane.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import dev.kalpane.data.PageStyle
+import dev.kalpane.data.Paper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -116,7 +130,7 @@ fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> U
     var state by remember(ref) { mutableStateOf<PageState?>(null) }
     LaunchedEffect(ref) {
         val data = vm.load(ref)
-        state = PageState(data.text, data.canvas.items)
+        state = PageState(data.text, data.canvas.items, data.canvas.style)
     }
     val s = state
     if (s == null) {
@@ -130,6 +144,13 @@ fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> U
 private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: ToolState, onBack: () -> Unit, onRenamed: (PageRef) -> Unit) {
     val scope = rememberCoroutineScope()
     val fingerDrawing by vm.fingerDrawing.collectAsStateWithLifecycle()
+    val defaults by vm.defaults.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val changes by vm.changes.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val font = NoteFont.entries.firstOrNull { it.name == (s.style.font ?: defaults.font) } ?: NoteFont.Sans
+    val size = s.style.size ?: defaults.size
+    val paperStyle = s.style.paper ?: defaults.paper
     val controller = remember(s) { CanvasController(s, tools) }
     val bitmaps = remember(ref) { mutableStateMapOf<String, ImageBitmap>() }
     val viewport = remember { Viewport() }
@@ -170,11 +191,32 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopBar(title = ref.name, onBack = { if (s.selection.isNotEmpty()) s.selection = emptySet(); onBack() }) {
+            if (sync.repo != null) {
+                val status = pageStatus(changes, ref.notebook, ref.name)
+                Box {
+                    IconButton(onClick = { vm.save(ref, s.data()); dialog = "push" }, enabled = busy == null) {
+                        Icon(Icons.Outlined.CloudUpload, "Push page", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (status != null) Box(
+                        Modifier.align(Alignment.TopEnd).padding(10.dp).size(8.dp).clip(CircleShape).background(statusColor(status)),
+                    )
+                }
+            }
             IconButton(onClick = s::undo, enabled = s.canUndo) { Icon(Icons.AutoMirrored.Outlined.Undo, "Undo") }
             IconButton(onClick = s::redo, enabled = s.canRedo) { Icon(Icons.AutoMirrored.Outlined.Redo, "Redo") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Page style") }, onClick = { menu = false; dialog = "style" })
+                    if (sync.repo != null) {
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text("Pull page") }, onClick = { menu = false; vm.save(ref, s.data()); vm.pull(AppViewModel.Scope.Page(ref)) })
+                        DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; dialog = "history" })
+                        if (pageStatus(changes, ref.notebook, ref.name) != null) {
+                            DropdownMenuItem(text = { Text("Discard changes") }, onClick = { menu = false; dialog = "discard" })
+                        }
+                    }
+                    HorizontalDivider()
                     DropdownMenuItem(text = { Text("Rename page") }, onClick = { menu = false; dialog = "rename" })
                     DropdownMenuItem(text = { Text("Delete page") }, onClick = { menu = false; dialog = "delete" })
                 }
@@ -185,7 +227,8 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
         })
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            PageSurface(s, controller, fingerDrawing, bitmaps, viewport, vScroll, hScroll, focus)
+            PageSurface(s, controller, fingerDrawing, bitmaps, viewport, vScroll, hScroll, focus, font, size, paperStyle)
+            if (busy != null) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter))
         }
         if (s.textFocused) FormatBar(s) else Spacer(Modifier.navigationBarsPadding())
     }
@@ -203,6 +246,23 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
             vm.deletePage(ref)
             onBack()
         }
+        "push" -> PushDialog(vm, AppViewModel.Scope.Page(ref)) { dialog = null }
+        "history" -> HistoryDialog(vm, AppViewModel.Scope.Page(ref)) { dialog = null }
+        "style" -> PageStyleDialog(
+            style = PageStyle(font.name, size, paperStyle),
+            title = "Page style",
+            onDismiss = { dialog = null },
+        ) { s.setStyle(it) }
+        "discard" -> ConfirmDialog(
+            "Discard changes?",
+            "“${ref.name}” goes back to its last pushed version. This cannot be undone.",
+            "Discard",
+            { dialog = null },
+        ) {
+            dialog = null
+            skipSave = true
+            vm.discard(ref) { onBack() }
+        }
     }
 }
 
@@ -216,6 +276,9 @@ private fun PageSurface(
     vScroll: ScrollState,
     hScroll: ScrollState,
     focus: FocusRequester,
+    font: NoteFont,
+    textSize: Float,
+    paperStyle: Paper,
 ) {
     val base = LocalDensity.current
     val colors = MaterialTheme.colorScheme
@@ -274,12 +337,12 @@ private fun PageSurface(
                     Box(
                         Modifier.align(Alignment.TopCenter)
                             .size(PAGE_WIDTH.dp, pageHeight.dp)
-                            .background(paper)
-                            .then(if (PAGE_WIDTH * scale < vw - 1) Modifier.border((hu).dp, colors.outlineVariant) else Modifier)
+                            .then(if (PAGE_WIDTH * scale < vw - 1) Modifier.shadow((3 * hu).dp, RoundedCornerShape((4 * hu).dp)) else Modifier)
+                            .drawBehind { drawPaper(paperStyle, paper, colors.outlineVariant.copy(alpha = if (dark) 0.5f else 0.8f), textSize, scale) }
                             .canvasInput(controller) { scale },
                     ) {
                         PageText(
-                            s, palette, focus,
+                            s, palette, focus, font, textSize,
                             onHeight = { textHeight = it },
                             modifier = Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp),
                         )
@@ -346,16 +409,48 @@ private fun ColorRow(colors: List<Int?>, current: Int?, ink: Color, onPick: (Int
 }
 
 @Composable
-private fun WidthRow(widths: List<Float>, current: Float, onPick: (Float) -> Unit) {
-    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        widths.forEachIndexed { i, w ->
-            Box(
-                Modifier.size(36.dp).clip(RoundedCornerShape(10.dp))
-                    .background(if (w == current) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
-                    .clickable { onPick(w) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size((6 + i * 6).dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface))
+private fun WidthSlider(value: Float, range: ClosedFloatingPointRange<Float>, preview: @Composable () -> Unit, onChange: (Float) -> Unit) {
+    Column(Modifier.width(280.dp).padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Box(Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) { preview() }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Width", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Slider(value = value, onValueChange = onChange, valueRange = range, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+            Text("%.1f".format(value), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
+        }
+    }
+}
+
+/** A sample stroke drawn with the current pen settings, including simulated pressure. */
+@Composable
+private fun StrokePreview(width: Float, sensitivity: Float, color: Color, highlighter: Boolean) {
+    Canvas(Modifier.fillMaxWidth().height(36.dp)) {
+        val pts = ArrayList<Float>()
+        val n = 40
+        for (i in 0..n) {
+            val t = i / n.toFloat()
+            val x = 12f + t * (size.width - 24f)
+            val y = size.height / 2 + kotlin.math.sin(t * 2 * Math.PI).toFloat() * size.height * 0.28f
+            pts += x; pts += y; pts += (0.15f + 0.85f * kotlin.math.sin(t * Math.PI).toFloat())
+        }
+        val k = density // page units at about 1 unit per dp
+        if (highlighter) drawHighlighter(pts, width * k, color.copy(alpha = 0.38f))
+        else drawPath(strokeOutline(pts, width * k, false, sensitivity), color)
+    }
+}
+
+@Composable
+private fun PressureRow(current: Pressure, onPick: (Pressure) -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text("Pressure", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.width(248.dp)) {
+            Pressure.entries.forEachIndexed { i, p ->
+                SegmentedButton(
+                    selected = p == current,
+                    onClick = { onPick(p) },
+                    shape = SegmentedButtonDefaults.itemShape(i, Pressure.entries.size),
+                    icon = {},
+                ) { Text(p.label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
             }
         }
     }
@@ -378,11 +473,16 @@ private fun ToolStrip(tools: ToolState, onImage: () -> Unit) {
     ) {
         ToolButton(Icons.Outlined.Draw, "Pen", tools.tool == Tool.Pen, { tools.tool = Tool.Pen }) {
             ColorRow(PenColors, tools.penColor, ink) { tools.penColor = it }
-            WidthRow(PenWidths, tools.penWidth) { tools.penWidth = it }
+            WidthSlider(tools.penWidth, MIN_PEN..MAX_PEN, {
+                StrokePreview(tools.penWidth, tools.pressure.value, itemColor(tools.penColor, ink), false)
+            }) { tools.penWidth = it }
+            PressureRow(tools.pressure) { tools.pressure = it }
         }
         ToolButton(Icons.Outlined.BorderColor, "Highlighter", tools.tool == Tool.Highlighter, { tools.tool = Tool.Highlighter }) {
             ColorRow(HighlighterColors, tools.highlighterColor, ink) { c -> c?.let { tools.highlighterColor = it } }
-            WidthRow(HighlighterWidths, tools.highlighterWidth) { tools.highlighterWidth = it }
+            WidthSlider(tools.highlighterWidth, MIN_HIGHLIGHTER..MAX_HIGHLIGHTER, {
+                StrokePreview(tools.highlighterWidth, 0f, Color(tools.highlighterColor), true)
+            }) { tools.highlighterWidth = it }
         }
         ToolButton(Icons.Outlined.AutoFixNormal, "Eraser", tools.tool == Tool.Eraser, { tools.tool = Tool.Eraser }) { dismiss ->
             DropdownMenuItem(text = { Text("Erase whole strokes") }, onClick = { tools.partialEraser = false; dismiss() },
@@ -400,7 +500,9 @@ private fun ToolStrip(tools: ToolState, onImage: () -> Unit) {
                 )
             }
             ColorRow(PenColors, tools.penColor, ink) { tools.penColor = it }
-            WidthRow(PenWidths, tools.penWidth) { tools.penWidth = it }
+            WidthSlider(tools.penWidth, MIN_PEN..MAX_PEN, {
+                StrokePreview(tools.penWidth, 0f, itemColor(tools.penColor, ink), false)
+            }) { tools.penWidth = it }
         }
         VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         ToolButton(Icons.Outlined.AddPhotoAlternate, "Insert image", false, onImage)
@@ -447,7 +549,7 @@ private fun FormatBar(s: PageState) {
             Modifier.fillMaxWidth().height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tool(Icons.Outlined.Title, "Heading") { edit(MarkdownEdit::cycleHeading) }
+            HeadingMenu(s)
             Tool(Icons.Outlined.FormatBold, "Bold") { edit { MarkdownEdit.toggleWrap(it, "**") } }
             Tool(Icons.Outlined.FormatItalic, "Italic") { edit { MarkdownEdit.toggleWrap(it, "*") } }
             Tool(Icons.Outlined.FormatStrikethrough, "Strikethrough") { edit { MarkdownEdit.toggleWrap(it, "~~") } }
@@ -470,5 +572,67 @@ private fun FormatBar(s: PageState) {
 private fun Tool(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     IconButton(onClick = onClick, enabled = enabled) {
         Icon(icon, label, tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun HeadingMenu(s: PageState) {
+    var open by remember { mutableStateOf(false) }
+    val current = MarkdownEdit.headingLevel(s.text.text, s.text.selection.start)
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Outlined.Title, "Heading", tint = if (current > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            (1..6).forEach { level ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Heading $level",
+                            fontSize = (15 * HeadingScale[level - 1]).sp,
+                            fontWeight = if (level <= 2) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (level == current) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                        )
+                    },
+                    leadingIcon = { Text("H$level", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    onClick = { open = false; s.setText(MarkdownEdit.setHeading(s.text.toEdit(), level).toValue(), merge = false) },
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Normal text", color = if (current == 0) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                leadingIcon = { Text("¶", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                onClick = { open = false; s.setText(MarkdownEdit.setHeading(s.text.toEdit(), 0).toValue(), merge = false) },
+            )
+        }
+    }
+}
+
+/** Ruled lines follow the text's line height so writing sits on them. */
+fun DrawScope.drawPaper(paper: Paper, background: Color, line: Color, textSize: Float, scale: Float, topUnits: Float = 40f) {
+    drawRect(background)
+    val lh = textSize * LINE_HEIGHT * scale
+    val top = topUnits * scale
+    val stroke = maxOf(1f, 0.6f * scale)
+    when (paper) {
+        Paper.Plain -> Unit
+        Paper.Ruled -> {
+            var y = top + lh
+            while (y < size.height) { drawLine(line, Offset(0f, y), Offset(size.width, y), stroke); y += lh }
+        }
+        Paper.Grid -> {
+            var y = top + lh
+            while (y < size.height) { drawLine(line, Offset(0f, y), Offset(size.width, y), stroke * 0.8f); y += lh }
+            var x = (size.width / 2) % lh
+            while (x < size.width) { drawLine(line, Offset(x, 0f), Offset(x, size.height), stroke * 0.8f); x += lh }
+        }
+        Paper.Dots -> {
+            var y = top + lh
+            while (y < size.height) {
+                var x = (size.width / 2) % lh
+                while (x < size.width) { drawCircle(line, 1.4f * scale, Offset(x, y)); x += lh }
+                y += lh
+            }
+        }
     }
 }

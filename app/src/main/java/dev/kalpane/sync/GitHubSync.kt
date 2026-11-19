@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -143,19 +144,30 @@ class GitHubSync(
         put("encoding", "base64")
     }).second!!.jsonObject.str("sha")
 
-    /** Pulls, merges and pushes. [base] is the file state after the last successful sync. */
-    fun sync(root: File, base: Map<String, String>): SyncResult {
+    enum class Mode { Pull, Push }
+
+    /**
+     * Pulls (and with [Mode.Push] also commits and pushes) the paths accepted by [scope].
+     * [base] is the file state after the last sync; the returned base covers all paths.
+     */
+    fun run(root: File, base: Map<String, String>, mode: Mode, message: String, scope: (String) -> Boolean = { true }): SyncResult {
         repeat(3) {
-            try { return attempt(root, base) } catch (_: RefMoved) { /* Someone pushed meanwhile: merge again. */ }
+            try { return attempt(root, base, mode, message, scope) } catch (_: RefMoved) { /* Someone pushed meanwhile: merge again. */ }
         }
-        throw SyncException("The repository kept changing during sync. Try again.")
+        throw SyncException("The branch kept changing during push. Try again.")
     }
 
-    private fun attempt(root: File, base: Map<String, String>): SyncResult {
+    /** Pull then push everything. */
+    fun sync(root: File, base: Map<String, String>): SyncResult = run(root, base, Mode.Push, "Update notes from Kalpane")
+
+    private fun attempt(root: File, base: Map<String, String>, mode: Mode, message: String, scope: (String) -> Boolean): SyncResult {
         val head = head()
         val (tree, remote) = remoteTree(head)
-        val local = SyncPlanner.scan(root)
-        val plan = SyncPlanner.plan(local, remote, base)
+        val full = SyncPlanner.plan(SyncPlanner.scan(root), remote, base)
+        val plan = SyncPlan(
+            full.download.filter(scope), full.deleteLocal.filter(scope),
+            full.upload.filter(scope), full.deleteRemote.filter(scope), full.conflicts.filter(scope),
+        )
         fun file(path: String) = File(root, path)
 
         // Bring remote changes down first; the local folder is the working copy.
@@ -165,28 +177,36 @@ class GitHubSync(
         for (path in plan.conflicts) {
             val theirs = blob(remote.getValue(path))
             when {
-                path.endsWith("/notebook.json") -> {
-                    writeAtomic(file(path), mergeOrder(file(path).readBytes(), theirs))
-                    upload += path
-                }
-                path.contains("/assets/") -> upload += path
+                path.endsWith("/notebook.json") -> writeAtomic(file(path), mergeOrder(file(path).readBytes(), theirs))
+                path.contains("/assets/") -> Unit
                 else -> {
                     val copy = SyncPlanner.conflictPath(path) { file(it).exists() || it in remote }
                     writeAtomic(file(copy), theirs)
-                    upload += path; upload += copy
+                    upload += copy
                 }
             }
+            upload += path
         }
         pruneEmptyDirs(root)
-
+        val local = SyncPlanner.scan(root)
         val pulled = plan.download.size + plan.deleteLocal.size
+
+        fun newBase(state: Map<String, String>): Map<String, String> {
+            val out = base.filterKeys { !scope(it) }.toMutableMap()
+            state.filterKeys(scope).forEach { (k, v) -> out[k] = v }
+            return out
+        }
+        if (mode == Mode.Pull) {
+            // Paths still differing locally stay as changes to push later.
+            return SyncResult(head, newBase(remote), pulled, 0, plan.conflicts.size)
+        }
         if (upload.isEmpty() && plan.deleteRemote.isEmpty()) {
-            return SyncResult(head, SyncPlanner.scan(root), pulled, 0, plan.conflicts.size)
+            return SyncResult(head, newBase(remote), pulled, 0, plan.conflicts.size)
         }
         val entries = buildJsonArray {
             for (path in upload.sorted()) {
-                val bytes = file(path).readBytes()
-                val sha = SyncPlanner.blobSha(bytes).takeIf { it in remote.values } ?: createBlob(bytes)
+                val sha = local[path] ?: continue
+                if (sha !in remote.values) createBlob(file(path).readBytes())
                 add(buildJsonObject { put("path", path); put("mode", "100644"); put("type", "blob"); put("sha", sha) })
             }
             for (path in plan.deleteRemote) {
@@ -194,17 +214,82 @@ class GitHubSync(
             }
         }
         val newTree = call("POST", "git/trees", buildJsonObject { put("base_tree", tree); put("tree", entries) }).second!!.jsonObject.str("sha")
-        val changes = upload.size + plan.deleteRemote.size
         val commit = call("POST", "git/commits", buildJsonObject {
-            put("message", "Update notes from Kalpane ($changes ${if (changes == 1) "file" else "files"})")
+            put("message", message)
             put("tree", newTree)
-            put("parents", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive(head)) })
+            put("parents", buildJsonArray { add(JsonPrimitive(head)) })
         }).second!!.jsonObject.str("sha")
         val (code, _) = call("PATCH", "git/refs/heads/$branch", buildJsonObject {
             put("sha", commit); put("force", false)
         }, allow = setOf(409, 422))
         if (code == 409 || code == 422) throw RefMoved()
-        return SyncResult(commit, SyncPlanner.scan(root), pulled, changes, plan.conflicts.size)
+        val pushedState = remote.filterKeys { !scope(it) } + local.filterKeys(scope)
+        return SyncResult(commit, newBase(pushedState), pulled, upload.size + plan.deleteRemote.size, plan.conflicts.size)
+    }
+
+    /**
+     * Replaces the working copy with the branch's files (like `git checkout`). Only call with
+     * no local changes. Returns the new base.
+     */
+    fun checkout(root: File): Map<String, String> {
+        val (_, remote) = remoteTree(head())
+        val local = SyncPlanner.scan(root)
+        local.keys.filter { it !in remote }.forEach { File(root, it).delete() }
+        remote.forEach { (path, sha) -> if (local[path] != sha) writeAtomic(File(root, path), blob(sha)) }
+        pruneEmptyDirs(root)
+        return remote
+    }
+
+    /** Contents of a file as of the last sync, for discarding local changes. */
+    fun blobBytes(sha: String): ByteArray = blob(sha)
+
+    fun branches(): List<String> {
+        val (_, body) = call("GET", "git/matching-refs/heads")
+        return body!!.jsonArray.map { it.jsonObject.str("ref").removePrefix("refs/heads/") }.sorted()
+    }
+
+    /** Creates [name] at the current head of this client's branch. */
+    fun createBranch(name: String) {
+        if (!name.matches(Regex("[A-Za-z0-9._/-]+")) || name.startsWith("/") || name.endsWith("/") || ".." in name) {
+            throw SyncException("Use letters, numbers, dots, dashes and slashes for branch names.")
+        }
+        val (code, _) = call("POST", "git/refs", buildJsonObject {
+            put("ref", "refs/heads/$name"); put("sha", head())
+        }, allow = setOf(422))
+        if (code == 422) throw SyncException("Branch “$name” already exists.")
+    }
+
+    data class Commit(val sha: String, val message: String, val date: String, val url: String)
+
+    /** Commits on this branch touching any of [paths], newest first. */
+    fun history(paths: List<String>, limit: Int = 30): List<Commit> = paths.flatMap { path ->
+        val url = api.toHttpUrl().newBuilder().addPathSegments("repos/$repo/commits")
+            .addQueryParameter("sha", branch).apply { if (path.isNotEmpty()) addQueryParameter("path", path) }
+            .addQueryParameter("per_page", limit.toString()).build()
+        fetchArray(url.toString()).map { c ->
+            val o = c.jsonObject
+            val commit = o.getValue("commit").jsonObject
+            Commit(
+                sha = o.str("sha"),
+                message = commit.str("message").lineSequence().first(),
+                date = commit.getValue("committer").jsonObject.str("date"),
+                url = o.str("html_url"),
+            )
+        }
+    }.distinctBy { it.sha }.sortedByDescending { it.date }.take(limit)
+
+    private fun fetchArray(url: String): JsonArray {
+        val request = Request.Builder().url(url)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28").build()
+        val response = try { client.newCall(request).execute() } catch (e: IOException) {
+            throw SyncException("No connection to GitHub.")
+        }
+        response.use { r ->
+            if (!r.isSuccessful) throw SyncException("Could not load history (${r.code}).")
+            return json.parseToJsonElement(r.body!!.string()).jsonArray
+        }
     }
 
     /** Page order from both sides: ours first, then pages only they have. */
@@ -214,7 +299,7 @@ class GitHubSync(
         }.getOrNull().orEmpty()
         val a = pages(ours); val b = pages(theirs)
         val merged = a + b.filter { it !in a }
-        return buildJsonObject { put("pages", JsonArray(merged.map { kotlinx.serialization.json.JsonPrimitive(it) })) }
+        return buildJsonObject { put("pages", JsonArray(merged.map { JsonPrimitive(it) })) }
             .toString().toByteArray()
     }
 

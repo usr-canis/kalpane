@@ -27,16 +27,38 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 
-fun pressureFactor(p: Float) = if (p <= 0f) 0.85f else (0.45f + 0.75f * p).coerceIn(0.45f, 1.2f)
+/** Width multiplier for a pressure reading; readings of 0 mean the device reported none. */
+fun pressureCurve(p: Float) = if (p <= 0f) 1f else (0.3f + 1.2f * p).coerceIn(0.25f, 1.5f)
 
-/** Filled outline of a pressure-sensitive stroke, with round end caps. */
-fun strokeOutline(points: List<Float>, width: Float, highlighter: Boolean): Path {
+/**
+ * Filled outline of a stroke, with round end caps. [sensitivity] (0..1) sets how much pressure
+ * changes the width; pressure is smoothed so lines swell and taper without blobs.
+ */
+fun strokeOutline(points: List<Float>, width: Float, highlighter: Boolean, sensitivity: Float = 0.65f): Path {
     val n = points.size / 3
     val path = Path()
     if (n == 0) return path
     fun x(i: Int) = points[i * 3]
     fun y(i: Int) = points[i * 3 + 1]
-    fun w(i: Int) = if (highlighter) width else width * pressureFactor(points[i * 3 + 2])
+    val widths = FloatArray(n)
+    if (highlighter || sensitivity <= 0f) {
+        widths.fill(width)
+    } else {
+        // Smooth pressure forwards and backwards, then apply the curve.
+        val p = FloatArray(n) { points[it * 3 + 2] }
+        for (i in 1 until n) p[i] = p[i - 1] * 0.6f + p[i] * 0.4f
+        for (i in n - 2 downTo 0) p[i] = p[i + 1] * 0.4f + p[i] * 0.6f
+        val taper = minOf(4, n / 4)
+        for (i in 0 until n) {
+            var w = width * (1f - sensitivity + sensitivity * pressureCurve(p[i]))
+            if (taper > 0) {
+                val edge = minOf(i, n - 1 - i)
+                if (edge < taper) w *= 0.55f + 0.45f * edge / taper
+            }
+            widths[i] = w
+        }
+    }
+    fun w(i: Int) = widths[i]
     if (n == 1) {
         val r = w(0) / 2
         path.addOval(Rect(x(0) - r, y(0) - r, x(0) + r, y(0) + r))
@@ -79,7 +101,7 @@ class PathCache {
     private val map = IdentityHashMap<Stroke, Path>()
     fun get(s: Stroke): Path {
         if (map.size > 4000) map.clear()
-        return map.getOrPut(s) { strokeOutline(s.points, s.width, s.highlighter) }
+        return map.getOrPut(s) { strokeOutline(s.points, s.width, s.highlighter, s.pressure) }
     }
 }
 

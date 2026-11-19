@@ -80,8 +80,9 @@ class GitHubSyncTest {
                     path == "git/ref/heads/main" -> ok("""{"object":{"sha":"c1"}}""")
                     path == "git/commits/c1" -> ok("""{"tree":{"sha":"t1"}}""")
                     path == "git/trees/t1" -> ok(
-                        """{"truncated":false,"tree":[""" + tree.entries.joinToString(",") { (p, s) -> """{"path":"$p","type":"blob","sha":"$s"}""" } +
-                            """,{"path":"README.md","type":"blob","sha":"r"}]}"""
+                        """{"truncated":false,"tree":[""" +
+                            (tree.entries.map { (p, s) -> """{"path":"$p","type":"blob","sha":"$s"}""" } +
+                                """{"path":"README.md","type":"blob","sha":"r"}""").joinToString(",") + "]}"
                     )
                     path.startsWith("git/blobs/") && request.method == "GET" -> {
                         val sha = path.removePrefix("git/blobs/")
@@ -147,5 +148,31 @@ class GitHubSyncTest {
         root.resolve("Work/Page 1.md").writeText("same")
         GitHubSync("o/r", "main", "t", server.url("/").toString()).sync(root, emptyMap())
         assertEquals(0, refUpdates)
+    }
+
+    @Test fun scopedPushOnlySendsThatPage() {
+        start()
+        val root = tmp.newFolder("notes")
+        root.resolve("A").mkdirs()
+        root.resolve("A/Page 1.md").writeText("one")
+        root.resolve("A/Page 2.md").writeText("two")
+        val result = GitHubSync("o/r", "main", "t", server.url("/").toString())
+            .run(root, emptyMap(), GitHubSync.Mode.Push, "Update A/Page 1") { it == "A/Page 1.md" }
+        assertEquals(listOf("A/Page 1.md"), newTreeEntries)
+        assertEquals(setOf("A/Page 1.md"), result.base.keys)
+    }
+
+    @Test fun pullDoesNotPush() {
+        put("A/Page 1.md", "remote")
+        start()
+        val root = tmp.newFolder("notes")
+        root.resolve("B").mkdirs()
+        root.resolve("B/Page 1.md").writeText("local")
+        val result = GitHubSync("o/r", "main", "t", server.url("/").toString())
+            .run(root, emptyMap(), GitHubSync.Mode.Pull, "")
+        assertEquals("remote", root.resolve("A/Page 1.md").readText())
+        assertEquals(0, refUpdates)
+        // The local-only page is still a change to push.
+        assertFalse("B/Page 1.md" in result.base)
     }
 }

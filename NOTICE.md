@@ -6,4 +6,4 @@ The current feather-and-book mark was generated for Kalpane at the repository ow
 
 AndroidX and Material Components are licensed under Apache 2.0. Kotlin is licensed under Apache 2.0. OkHttp is licensed under Apache 2.0.
 
-Roboto (Google) and JetBrains Mono (JetBrains) are bundled unmodified under the SIL Open Font License 1.1. See docs/Roboto-OFL.txt, and docs/JetBrainsMono-OFL.txt. Fonts were obtained from the Google Fonts repository.
+JetBrains Mono (JetBrains), Google Sans Code (Google) and Intel One Mono (Intel) are bundled unmodified under the SIL Open Font License 1.1; see docs/JetBrainsMono-OFL.txt, docs/GoogleSansCode-OFL.txt and docs/IntelOneMono-OFL.txt. Fonts were obtained from the Google Fonts repository (github.com/google/fonts).
