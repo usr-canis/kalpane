@@ -24,7 +24,13 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug --continue
+      - name: Build, test and lint
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest lintDebug assembleDebug --continue 2>&1 | tee build.log
+      - name: Error summary
+        if: failure()
+        run: grep -E '^e: |FAILED|Error:|error:|AssertionError|Exception' build.log | grep -v '^\s*at ' | head -40
       - uses: actions/upload-artifact@v4
         if: always()
         with:
