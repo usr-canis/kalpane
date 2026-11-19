@@ -134,9 +134,10 @@ class NoteStore(val root: File) {
         if (target == ref.name) return ref
         val unique = uniqueName(target) { pageExists(ref.notebook, it) }
         val new = PageRef(ref.notebook, unique)
+        val order = pageNames(ref.notebook).map { if (it == ref.name) unique else it }
         if (textFile(ref).exists()) check(textFile(ref).renameTo(textFile(new))) { "Could not rename page." }
         if (canvasFile(ref).exists()) check(canvasFile(ref).renameTo(canvasFile(new))) { "Could not rename page." }
-        saveOrder(ref.notebook, pageNames(ref.notebook).map { if (it == ref.name) unique else it }.filter { pageExists(ref.notebook, it) })
+        saveOrder(ref.notebook, order)
         return new
     }
 
