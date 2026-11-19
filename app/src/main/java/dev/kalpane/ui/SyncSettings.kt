@@ -38,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kalpane.AppViewModel
 import dev.kalpane.R
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontFamily
 
 private const val TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new"
