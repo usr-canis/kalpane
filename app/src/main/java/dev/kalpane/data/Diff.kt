@@ -33,8 +33,9 @@ object Diff {
             while (i < ma.size || j < mb.size) {
                 when {
                     i < ma.size && j < mb.size && ma[i] == mb[j] -> { ops += DiffLine(' ', ma[i], start + i + 1, start + j + 1); i++; j++ }
-                    j < mb.size && (i == ma.size || lcs[i][j + 1] >= lcs[i + 1][j]) -> { ops += DiffLine('+', mb[j], null, start + j + 1); j++ }
-                    else -> { ops += DiffLine('-', ma[i], start + i + 1, null); i++ }
+                    // Removals before additions, as git shows them.
+                    i < ma.size && (j == mb.size || lcs[i + 1][j] >= lcs[i][j + 1]) -> { ops += DiffLine('-', ma[i], start + i + 1, null); i++ }
+                    else -> { ops += DiffLine('+', mb[j], null, start + j + 1); j++ }
                 }
             }
         }
