@@ -252,7 +252,7 @@ private fun PageEditor(vm: AppViewModel, ref: PageRef, s: PageState, tools: Tool
             style = PageStyle(font.name, size, paperStyle),
             title = "Page style",
             onDismiss = { dialog = null },
-        ) { s.setStyle(it) }
+        ) { s.applyStyle(it) }
         "discard" -> ConfirmDialog(
             "Discard changes?",
             "“${ref.name}” goes back to its last pushed version. This cannot be undone.",

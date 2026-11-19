@@ -126,7 +126,7 @@ class PageState(text: String, items: List<Item>, style: PageStyle) {
         sync()
     }
 
-    fun setStyle(new: PageStyle) { style = new; version++ }
+    fun applyStyle(new: PageStyle) { style = new; version++ }
 
     fun data() = PageData(text.text, CanvasDoc(style = style, items = items))
 }
