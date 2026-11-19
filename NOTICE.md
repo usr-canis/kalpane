@@ -6,6 +6,6 @@ The current feather-and-book mark was generated for Kalpane at the repository ow
 
 AndroidX and Material Components are licensed under Apache 2.0. Kotlin is licensed under Apache 2.0. OkHttp is licensed under Apache 2.0.
 
-Roboto (Google), Source Serif 4 (Adobe), and JetBrains Mono (JetBrains) are bundled unmodified under the SIL Open Font License 1.1. See docs/Roboto-OFL.txt, docs/SourceSerif4-OFL.txt, and docs/JetBrainsMono-OFL.txt. Fonts were obtained from the Google Fonts repository.
+Roboto (Google) and JetBrains Mono (JetBrains) are bundled unmodified under the SIL Open Font License 1.1. See docs/Roboto-OFL.txt, and docs/JetBrainsMono-OFL.txt. Fonts were obtained from the Google Fonts repository.
 
 A small subset of Material icons is vendored from AndroidX Compose material-icons-extended 1.7.8 to avoid packaging and processing the entire icon catalog. Original Apache 2.0 copyright headers are retained in each source file under app/src/main/java/androidx/compose/material/icons/.

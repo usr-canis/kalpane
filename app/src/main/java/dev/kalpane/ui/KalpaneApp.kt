@@ -1,53 +1,54 @@
 package dev.kalpane.ui
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.kalpane.NotebookViewModel
-import kotlinx.coroutines.delay
+import dev.kalpane.AppViewModel
+import dev.kalpane.data.NoteRef
 
-@Composable fun KalpaneApp(vm: NotebookViewModel) {
-    val s by vm.state.collectAsStateWithLifecycle()
-    val activity=LocalActivity.current as? ComponentActivity
-    val night=isNight(s.prefs.theme)
-    LaunchedEffect(activity,night) {
-        activity?.enableEdgeToEdge(
-            statusBarStyle=SystemBarStyle.auto(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT) {night},
-            navigationBarStyle=SystemBarStyle.auto(0xffF5F4EF.toInt(),0xff191B18.toInt()) {night},
-        )
+@Composable
+fun KalpaneApp(vm: AppViewModel) {
+    val theme by vm.theme.collectAsStateWithLifecycle()
+    val dark = isDark(theme)
+    val activity = LocalContext.current as? ComponentActivity
+    LaunchedEffect(dark) {
+        val transparent = Color.Transparent.toArgb()
+        val style = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
+        activity?.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
-    var launched by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(s.loaded) { if(s.loaded) { delay(if(s.prefs.reducedMotion) 0 else 550); launched=true } }
-    KalpaneTheme(s.prefs.theme) {
-        val snackbar=remember { SnackbarHostState() }
-        LaunchedEffect(s.message) { s.message?.let { snackbar.showSnackbar(it,withDismissAction=true,duration=SnackbarDuration.Long); vm.message(null) } }
-        Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
-            if(!s.loaded || !launched) {
-                Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-                    Brand(large=true)
-                }
-            } else if(s.fatalError!=null) {
-                Column(Modifier.fillMaxSize().safeDrawingPadding().padding(32.dp),verticalArrangement=Arrangement.Center) { Text("Your files are preserved",style=MaterialTheme.typography.headlineSmall); Spacer(Modifier.height(16.dp)); Text(s.fatalError!!) }
-            } else {
-                Box(Modifier.fillMaxSize()) {
-                    when(s.screen) {
-                        "settings" -> SettingsScreen(s,vm)
-                        "editor" -> if(s.page!=null) EditorScreen(s,vm) else PagesScreen(s,vm)
-                        "pages" -> if(s.notebook!=null) PagesScreen(s,vm) else LibraryScreen(s,vm)
-                        else -> LibraryScreen(s,vm)
-                    }
-                    SnackbarHost(snackbar,Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(s.screen=="editor") 100.dp else 12.dp))
+    KalpaneTheme(theme) {
+        // "note:<ref>", "settings" or "" for the library.
+        var screen by rememberSaveable { mutableStateOf("") }
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Crossfade(targetState = screen, animationSpec = tween(180), label = "screen") { current ->
+                when {
+                    current.startsWith("note:") -> EditorScreen(
+                        vm = vm,
+                        ref = NoteRef.decode(current.removePrefix("note:")),
+                        onClose = { screen = "" },
+                    )
+                    current == "settings" -> SettingsScreen(vm, onBack = { screen = "" })
+                    else -> LibraryScreen(
+                        vm = vm,
+                        onOpen = { screen = "note:" + it.encode() },
+                        onSettings = { screen = "settings" },
+                    )
                 }
             }
         }

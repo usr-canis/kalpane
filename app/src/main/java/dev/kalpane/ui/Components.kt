@@ -1,53 +1,89 @@
 package dev.kalpane.ui
 
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.*
-import dev.kalpane.R
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 
-@Composable fun Brand(modifier: Modifier = Modifier, large: Boolean = false) {
-    Row(modifier,verticalAlignment = Alignment.CenterVertically,horizontalArrangement = Arrangement.spacedBy(if(large) 16.dp else 8.dp)) {
-        Text("ಕಲ್ಪನೆ",fontFamily = Mallige,fontSize = if(large) 50.sp else 32.sp,color = MaterialTheme.colorScheme.onSurface)
-        Image(painterResource(R.drawable.kalpane_logo),"Kalpane feather and scroll",Modifier.size(if(large) 112.dp else 48.dp))
+/** A slim top bar: back, title, trailing actions. */
+@Composable
+fun TopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            modifier = Modifier.weight(1f).padding(start = 4.dp),
+        )
+        actions()
     }
 }
-@Composable fun ActionIcon(icon: ImageVector, label: String, enabled: Boolean = true, selected: Boolean = false, onClick: () -> Unit) {
-    IconButton(onClick,modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).then(if(selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier),enabled = enabled) {
-        Icon(icon,label,tint = if(!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = .32f) else if(selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,modifier = Modifier.size(22.dp))
-    }
+
+@Composable
+fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val submit = { if (value.text.isNotBlank()) onConfirm(value.text.trim()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+        },
+        confirmButton = { TextButton(onClick = submit, enabled = value.text.isNotBlank()) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
-@Composable fun NameDialog(title: String, initial: String = "", onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var value by remember { mutableStateOf(initial) }
-    AlertDialog(onDismissRequest = onDismiss,title = { Text(title) },text = { OutlinedTextField(value,{ value=it },label={Text("Name")},singleLine=true,modifier=Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton({ onSave(value.trim()); onDismiss() },enabled=value.isNotBlank()) { Text("Save") } },dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
-}
-@Composable fun SectionLabel(text: String) { Text(text.uppercase(),style=MaterialTheme.typography.labelSmall,letterSpacing=1.6.sp,color=MaterialTheme.colorScheme.onSurfaceVariant) }
-@Composable fun SettingSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-        Column(Modifier.weight(1f)) { Text(title,style=MaterialTheme.typography.titleSmall); Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant) }
-        Switch(checked,onChange,modifier=Modifier.semantics {contentDescription=title})
-    }
-}
-@Composable fun ListAction(icon: ImageVector,title: String,detail: String? = null,onClick: () -> Unit) {
-    Surface(onClick=onClick,color=Color.Transparent,modifier=Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal=20.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            Icon(icon,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(Modifier.weight(1f)) { Text(title,style=MaterialTheme.typography.bodyLarge); detail?.let { Text(it,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
-        }
-    }
+
+@Composable
+fun ConfirmDialog(title: String, body: String, confirm: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
