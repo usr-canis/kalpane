@@ -110,7 +110,8 @@ fun PageText(
         visualTransformation = MarkdownTransformation(reveal, palette, mono, textSize),
         cursorBrush = SolidColor(colors.primary),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-        onTextLayout = { layout = it; onHeight(it.size.height / density) },
+        // The text height, not the field height: the field fills the page, and the page grows with the text.
+        onTextLayout = { layout = it; onHeight(it.multiParagraph.height / density) },
         modifier = modifier
             .focusRequester(focus)
             .onFocusChanged { state.textFocused = it.isFocused }
