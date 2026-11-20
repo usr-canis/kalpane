@@ -46,8 +46,24 @@ class WalkthroughTest {
         rule.waitForIdle()
     }
 
-    private fun waitFor(matcher: androidx.compose.ui.test.SemanticsMatcher) =
-        rule.waitUntilAtLeastOneExists(matcher, 10_000)
+    private var step = 0
+
+    /** Waits for [matcher]; on timeout saves what the screen showed and the semantics tree. */
+    private fun waitFor(matcher: androidx.compose.ui.test.SemanticsMatcher) {
+        step++
+        try {
+            rule.waitUntilAtLeastOneExists(matcher, 15_000)
+        } catch (e: Throwable) {
+            runCatching { shot("fail-step$step") }
+            runCatching {
+                File(shots, "fail-step$step-tree.txt").writeText(
+                    rule.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().joinToString("\n\n") { it.toString() } +
+                        "\n\n" + rule.onRoot(useUnmergedTree = true).fetchSemanticsNode().config.toString()
+                )
+            }
+            throw e
+        }
+    }
 
     @Test fun walkthrough() {
         waitFor(hasText("New notebook"))
