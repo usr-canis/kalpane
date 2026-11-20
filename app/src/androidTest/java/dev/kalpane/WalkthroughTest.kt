@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -53,7 +54,7 @@ class WalkthroughTest {
     private fun waitFor(matcher: androidx.compose.ui.test.SemanticsMatcher) {
         step++
         try {
-            rule.waitUntilAtLeastOneExists(matcher, 15_000)
+            rule.waitUntil(15_000) { rule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: Throwable) {
             runCatching { shot("fail-step$step") }
             runCatching {
@@ -69,21 +70,21 @@ class WalkthroughTest {
     @Test fun walkthrough() {
         waitFor(hasText("New notebook"))
         shot("01-home-empty")
-        rule.onNode(hasText("New notebook")).performClick()
+        rule.onAllNodes(hasText("New notebook"), useUnmergedTree = true).onFirst().performClick()
         rule.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())).performTextInput("Work")
-        rule.onNode(hasText("Create")).performClick()
+        rule.onAllNodes(hasText("Create"), useUnmergedTree = true).onFirst().performClick()
 
         waitFor(hasContentDescription("Work, Page 1"))
         shot("02-notebook")
-        rule.onNode(hasContentDescription("Work, Page 1")).performClick()
+        rule.onAllNodes(hasContentDescription("Work, Page 1"), useUnmergedTree = true).onFirst().performClick()
 
         waitFor(hasSetTextAction())
-        rule.onNode(hasSetTextAction()).performTextInput(
+        rule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).onFirst().performTextInput(
             "# Kalpane\nNotes with **Markdown**, #ideas and [[Plan]].\n- [ ] Sketch the layout\n- [x] Pick fonts\n> Quote\n```kotlin\nval x = 1 // code\n```\n"
         )
         shot("03-page-text")
 
-        rule.onNode(hasContentDescription("Shapes")).performClick()
+        rule.onAllNodes(hasContentDescription("Shapes"), useUnmergedTree = true).onFirst().performClick()
         rule.onRoot().performTouchInput {
             swipe(Offset(width * 0.25f, height * 0.62f), Offset(width * 0.7f, height * 0.82f), 300)
         }
@@ -97,11 +98,11 @@ class WalkthroughTest {
 
         waitFor(hasText("Notebooks"))
         shot("06-home")
-        rule.onNode(hasContentDescription("More")).performClick()
-        rule.onNode(hasText("Settings")).performClick()
+        rule.onAllNodes(hasContentDescription("More"), useUnmergedTree = true).onFirst().performClick()
+        rule.onAllNodes(hasText("Settings"), useUnmergedTree = true).onFirst().performClick()
         waitFor(hasText("Theme"))
         shot("07-settings")
-        rule.onNode(hasText("Dark")).performClick()
+        rule.onAllNodes(hasText("Dark"), useUnmergedTree = true).onFirst().performClick()
         shot("08-settings-dark")
         back()
         waitFor(hasText("Notebooks"))
