@@ -43,6 +43,19 @@ class WalkthroughTest {
         File(shots, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    private fun tap(matcher: androidx.compose.ui.test.SemanticsMatcher) {
+        waitFor(matcher)
+        rule.onAllNodes(matcher, useUnmergedTree = true).onFirst().performClick()
+        rule.waitForIdle()
+    }
+
+    private fun tapIfPresent(matcher: androidx.compose.ui.test.SemanticsMatcher) {
+        if (rule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) {
+            rule.onAllNodes(matcher, useUnmergedTree = true).onFirst().performClick()
+            rule.waitForIdle()
+        }
+    }
+
     private fun back() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
@@ -86,15 +99,16 @@ class WalkthroughTest {
 
         rule.onAllNodes(hasContentDescription("Shapes"), useUnmergedTree = true).onFirst().performClick()
         rule.onRoot().performTouchInput {
-            swipe(Offset(width * 0.25f, height * 0.62f), Offset(width * 0.7f, height * 0.82f), 300)
+            // Inside the page on both phone and tablet, below the text.
+            swipe(Offset(width * 0.3f, height * 0.33f), Offset(width * 0.6f, height * 0.42f), 300)
         }
         shot("04-page-shape")
 
-        back() // clear selection
-        back() // leave the page
+        tapIfPresent(hasText("Done")) // close the shape selection
+        tap(hasContentDescription("Back"))
         waitFor(hasContentDescription("Work, Page 1"))
         shot("05-notebook-after")
-        back()
+        tap(hasContentDescription("Back"))
 
         waitFor(hasText("Notebooks"))
         shot("06-home")
@@ -104,7 +118,7 @@ class WalkthroughTest {
         shot("07-settings")
         rule.onAllNodes(hasText("Dark"), useUnmergedTree = true).onFirst().performClick()
         shot("08-settings-dark")
-        back()
+        tap(hasContentDescription("Back"))
         waitFor(hasText("Notebooks"))
         shot("09-home-dark")
     }

@@ -217,8 +217,9 @@ fun PageThumbnail(page: PageInfo, modifier: Modifier = Modifier, onLongClick: ((
         if (page.preview.isNotEmpty()) {
             Text(
                 page.preview,
-                fontSize = (17 * k).sp,
-                lineHeight = (27 * k).sp,
+                // Readable at thumbnail size rather than strictly to scale.
+                fontSize = maxOf(17 * k, 7f).sp,
+                lineHeight = maxOf(27 * k, 10f).sp,
                 color = colors.onSurfaceVariant,
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.padding(horizontal = (56 * k).dp, vertical = (40 * k).dp),
