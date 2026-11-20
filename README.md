@@ -10,6 +10,7 @@ The app opens on your notebooks. A notebook holds pages, and each page combines 
 
 - **Text:** tap with a finger to type. Markdown renders as you type; raw syntax shows only on the line you are editing. Headings, emphasis, links, lists, checklists (tap to tick), quotes, rules and fenced code blocks with basic syntax colouring.
 - **Drawing:** the stylus draws anywhere on the page: pen, highlighter, eraser (whole or partial strokes). Fingers type and scroll unless *Draw with finger* is on in Settings.
+- **Handwriting:** lasso strokes and choose *To text* to convert handwriting (English or Kannada) with on-device ML Kit; hold the pen still at the end of a stroke to snap it into a clean shape.
 - **Shapes:** line, arrow, rectangle, ellipse. Select one to move, resize or rotate it.
 - **Images:** insert from the photo picker, then move, resize, rotate, bring forward, send backward or delete.
 - **Select:** lasso strokes, shapes and images to move, scale, rotate, reorder or delete them together.

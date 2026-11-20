@@ -16,6 +16,8 @@ Yes, only when the user adds a GitHub remote (optional). Without a remote, no da
 - **Ephemeral processing?** No.
 - **Data collected by the developer?** None. There is no developer server, analytics, advertising or crash reporting service.
 
+**Google ML Kit (handwriting and shapes)**: recognition runs on the device and models are downloaded from Google. ML Kit may collect diagnostic and usage data (device information, API performance) for Google. Check Google's current "ML Kit data disclosure" guidance and declare what it lists (typically *App info and performance → Diagnostics* and *Device or other IDs*, collected, not shared, for analytics), as the SDK's behaviour is controlled by Google.
+
 Other answers
 - **Ads**: No.
 - **Target audience**: 18+ (or 13+), not designed for children.

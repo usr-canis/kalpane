@@ -21,6 +21,7 @@ Drawing
 • Low-latency ink, palm rejection, pinch to zoom
 • Shapes and images you can move, resize, rotate and layer
 • Lasso selection
+• Convert handwriting to text (English and Kannada) and hold the pen to snap rough drawings into clean shapes, on device
 
 Your notes, your repository
 • Notes are plain Markdown files with drawings beside them, stored on your device

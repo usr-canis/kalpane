@@ -15,6 +15,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,6 +73,22 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
             }
             SectionLabel("Drawing")
+            val handwriting by vm.handwriting.collectAsStateWithLifecycle()
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Handwriting language", style = MaterialTheme.typography.bodyLarge)
+                    Text("For converting handwriting to text, on device", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                dev.kalpane.ai.HandwritingLanguage.entries.forEachIndexed { i, l ->
+                    SegmentedButton(
+                        selected = handwriting == l, onClick = { vm.setHandwriting(l) },
+                        shape = SegmentedButtonDefaults.itemShape(i, dev.kalpane.ai.HandwritingLanguage.entries.size), icon = {},
+                    ) { Text(l.label) }
+                }
+            }
             Row(
                 Modifier.fillMaxWidth().height(64.dp)
                     .toggleable(value = fingerDrawing, role = Role.Switch) { vm.setFingerDrawing(it) }

@@ -36,6 +36,7 @@ class ToolState {
     var highlighterWidth by mutableStateOf(18f)
     var partialEraser by mutableStateOf(false)
     var pressure by mutableStateOf(Pressure.Normal)
+    var snapShapes by mutableStateOf(true)
     var shape by mutableStateOf(ShapeKind.Rectangle)
 }
 
@@ -127,6 +128,16 @@ class PageState(text: String, items: List<Item>, style: PageStyle) {
     }
 
     fun applyStyle(new: PageStyle) { style = new; version++ }
+
+    /** Replaces text and items in one undoable step. */
+    fun applyEdit(newText: String, newItems: List<Item>) {
+        push()
+        text = TextFieldValue(newText, androidx.compose.ui.text.TextRange(newText.length))
+        items = newItems
+        selection = emptySet()
+        lastTextPush = 0
+        version++
+    }
 
     /** Replaces the page with another version (undoable). */
     fun restoreFrom(data: PageData) {

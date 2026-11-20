@@ -289,6 +289,18 @@ object Geometry {
         return floatArrayOf(nc.x - nw / 2, nc.y - nh / 2, nw, nh)
     }
 
+    /** A clean shape fitted to a hand-drawn stroke. */
+    fun fitShape(s: Stroke, kind: ShapeKind): Shape {
+        val first = Pt(s.x(0), s.y(0)); val last = Pt(s.x(s.count - 1), s.y(s.count - 1))
+        return if (kind == ShapeKind.Line || kind == ShapeKind.Arrow) {
+            Shape(s.id, kind, first.x, first.y, last.x - first.x, last.y - first.y, color = s.color, width = s.width)
+        } else {
+            var l = Float.MAX_VALUE; var t = Float.MAX_VALUE; var r = -Float.MAX_VALUE; var b = -Float.MAX_VALUE
+            for (i in 0 until s.count) { l = min(l, s.x(i)); r = max(r, s.x(i)); t = min(t, s.y(i)); b = max(b, s.y(i)) }
+            Shape(s.id, kind, l, t, r - l, b - t, color = s.color, width = s.width)
+        }
+    }
+
     /** Moving-average smoothing of a stroke's x/y, keeping its end points. */
     fun smooth(points: List<Float>): List<Float> {
         val n = points.size / 3

@@ -27,6 +27,10 @@ import kotlin.math.roundToInt
 /** Turns pointer input on the page into drawing, erasing, selecting and transforming. */
 class CanvasController(private val state: PageState, private val tools: ToolState) {
     var fingerDrawing = false
+    /** Called with a finished pen stroke when the pen was held still at its end. */
+    var onSnap: ((Stroke) -> Unit)? = null
+    private var lastMoveAt = 0L
+    private var lastMovePoint = Pt(0f, 0f)
     /** Page units per screen dp, so handles and hit areas keep a constant size on screen. */
     var hu = 1f
 
@@ -62,7 +66,8 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
     private fun dist(a: Pt, b: Pt) = hypot(a.x - b.x, a.y - b.y)
 
     /** Returns true if the canvas takes this gesture; otherwise text editing and scrolling get it. */
-    fun begin(p: Pt, stylus: Boolean, eraserTip: Boolean, pressure: Float): Boolean {
+    fun begin(p: Pt, stylus: Boolean, eraserTip: Boolean, pressure: Float, time: Long = 0L): Boolean {
+        lastMoveAt = time; lastMovePoint = p
         val selected = state.items.filter { it.id in state.selection }
         selectionFrame(selected, hu)?.let { frame ->
             val reach = 22 * hu
@@ -139,7 +144,8 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
         state.update(state.items.map { byId[it.id] ?: it })
     }
 
-    fun move(p: Pt, pressure: Float, stylus: Boolean) {
+    fun move(p: Pt, pressure: Float, stylus: Boolean, time: Long = 0L) {
+        if (dist(p, lastMovePoint) > 3 * hu) { lastMoveAt = time; lastMovePoint = p }
         when (val a = active) {
             null -> Unit
             is Ink -> addPoint(p, if (a.highlighter) 0.5f else if (stylus) pressure else 0f)
@@ -201,7 +207,7 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
         }
     }
 
-    fun end() {
+    fun end(time: Long = 0L) {
         when (val a = active) {
             is Ink -> {
                 if (state.live.size >= 3) {
@@ -209,6 +215,8 @@ class CanvasController(private val state: PageState, private val tools: ToolStat
                     val stroke = if (a.highlighter) Stroke(points = points, color = tools.highlighterColor, width = tools.highlighterWidth, highlighter = true)
                     else Stroke(points = points, color = tools.penColor, width = tools.penWidth, pressure = tools.pressure.value)
                     state.commit(state.items + stroke)
+                    // Holding the pen still for a moment at the end asks for a clean shape.
+                    if (!a.highlighter && tools.snapShapes && time - lastMoveAt > 450 && stroke.count >= 6) onSnap?.invoke(stroke)
                 }
                 state.live.clear()
             }
@@ -256,7 +264,7 @@ fun Modifier.canvasInput(controller: CanvasController, scale: () -> Float): Modi
             } while (e.changes.any { it.pressed })
             return@awaitEachGesture
         }
-        if (!controller.begin(pt(down.position), stylus, down.type == PointerType.Eraser, down.pressure)) return@awaitEachGesture
+        if (!controller.begin(pt(down.position), stylus, down.type == PointerType.Eraser, down.pressure, down.uptimeMillis)) return@awaitEachGesture
         down.consume()
         if (stylus && controller.penInk) {
             controller.wet = controller.lastEvent?.let { WetInk.start(it, controller.liveArgb, controller.liveWidth * s) } ?: false
@@ -270,14 +278,14 @@ fun Modifier.canvasInput(controller: CanvasController, scale: () -> Float): Modi
                 controller.wet = false
                 controller.cancel(); break
             }
-            change.historical.forEach { controller.move(pt(it.position), change.pressure, stylus) }
+            change.historical.forEach { controller.move(pt(it.position), change.pressure, stylus, it.uptimeMillis) }
             if (change.pressed) {
-                controller.move(pt(change.position), change.pressure, stylus)
+                controller.move(pt(change.position), change.pressure, stylus, change.uptimeMillis)
                 if (controller.wet) controller.lastEvent?.let { WetInk.move(it) }
             } else {
                 if (controller.wet) controller.lastEvent?.let { WetInk.finish(it) }
                 controller.wet = false
-                controller.end()
+                controller.end(change.uptimeMillis)
                 if (stylus) lastStylusUp = change.uptimeMillis
                 break
             }

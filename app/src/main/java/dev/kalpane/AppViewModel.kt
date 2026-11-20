@@ -272,6 +272,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_sync.value.repo != null) _changes.value = computeChanges()
     }
 
+    // ---- Handwriting and shapes (on-device ML Kit) ----
+
+    private val _handwriting = MutableStateFlow(
+        runCatching { dev.kalpane.ai.HandwritingLanguage.valueOf(prefs.getString("handwriting", "English")!!) }
+            .getOrDefault(dev.kalpane.ai.HandwritingLanguage.English)
+    )
+    val handwriting: StateFlow<dev.kalpane.ai.HandwritingLanguage> = _handwriting.asStateFlow()
+
+    fun setHandwriting(language: dev.kalpane.ai.HandwritingLanguage) {
+        _handwriting.value = language
+        prefs.edit().putString("handwriting", language.name).apply()
+    }
+
+    suspend fun recognizeText(strokes: List<dev.kalpane.data.Stroke>): String? = try {
+        val language = _handwriting.value
+        if (!dev.kalpane.ai.InkRecognizer.isDownloaded(language.tag)) _message.value = "Downloading the ${language.label} handwriting model…"
+        dev.kalpane.ai.InkRecognizer.text(strokes, language).also { if (it == null) _message.value = "No handwriting recognised." }
+    } catch (e: Exception) {
+        _message.value = e.message ?: "Handwriting recognition failed."; null
+    }
+
+    suspend fun recognizeShape(stroke: dev.kalpane.data.Stroke): dev.kalpane.data.ShapeKind? = try {
+        dev.kalpane.ai.InkRecognizer.shape(stroke)
+    } catch (e: Exception) {
+        _message.value = e.message; null
+    }
+
     /** Marks a page as open so background backup waits. */
     fun setEditing(on: Boolean) { services.editing = on }
 

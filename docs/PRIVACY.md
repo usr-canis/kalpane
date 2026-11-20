@@ -10,6 +10,9 @@ Your notebooks, pages, drawings, images and settings are stored in the app's pri
 ## GitHub remote (optional)
 If you add a GitHub repository as a remote, Kalpane sends and receives your notebook files directly between your device and GitHub (api.github.com) when you pull or push, or when Auto push runs. This uses a personal access token that you create on GitHub. The token is encrypted with the Android Keystore and is only sent to api.github.com. Your notes are then subject to GitHub's terms and privacy statement. You can remove the remote at any time in Settings; files already in your repository stay there until you delete them on GitHub.
 
+## Handwriting and shape recognition
+Converting handwriting to text and snapping shapes use Google ML Kit Digital Ink, which runs on your device. The first time you use it, the recognition model (a few megabytes) is downloaded from Google. Your handwriting is not sent anywhere. As described in Google's ML Kit terms, ML Kit may send Google basic diagnostic and usage information about the recognition feature (such as device type and performance), not your notes.
+
 ## Images
 Images you insert are chosen with the Android photo picker and copied into the app. Kalpane does not request access to your photo library.
 

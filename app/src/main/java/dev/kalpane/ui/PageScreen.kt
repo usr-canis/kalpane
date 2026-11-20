@@ -7,6 +7,10 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.zIndex
@@ -168,6 +172,15 @@ private fun PageEditor(
     val size = s.style.size ?: defaults.size
     val paperStyle = s.style.paper ?: defaults.paper
     val controller = remember(s) { CanvasController(s, tools) }
+    controller.onSnap = { stroke ->
+        scope.launch {
+            val kind = vm.recognizeShape(stroke) ?: return@launch
+            if (s.items.any { it.id == stroke.id }) {
+                val shape = Geometry.fitShape(stroke, kind)
+                s.commit(s.items.map { if (it.id == stroke.id) shape else it })
+            }
+        }
+    }
     val bitmaps = remember(ref) { mutableStateMapOf<String, ImageBitmap>() }
     val viewport = remember { Viewport() }
     val vScroll = rememberScrollState()
@@ -257,7 +270,15 @@ private fun PageEditor(
                 }
             }
         }
-        if (s.selection.isNotEmpty()) SelectionStrip(s) else ToolStrip(tools, onImage = {
+        if (s.selection.isNotEmpty()) SelectionStrip(s, onConvert = {
+            scope.launch {
+                val strokes = s.items.filter { it.id in s.selection }.filterIsInstance<dev.kalpane.data.Stroke>().filter { !it.highlighter }
+                val text = vm.recognizeText(strokes) ?: return@launch
+                val ids = strokes.map { it.id }.toSet()
+                val current = s.text.text
+                s.applyEdit(if (current.isBlank()) text else current.trimEnd('\n') + "\n" + text, s.items.filterNot { it.id in ids })
+            }
+        }) else ToolStrip(tools, onImage = {
             picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         })
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -544,6 +565,17 @@ private fun ToolStrip(tools: ToolState, onImage: () -> Unit) {
                 StrokePreview(tools.penWidth, tools.pressure.value, itemColor(tools.penColor, ink), false)
             }) { tools.penWidth = it }
             PressureRow(tools.pressure) { tools.pressure = it }
+            Row(
+                Modifier.width(280.dp).toggleable(value = tools.snapShapes, role = Role.Switch) { tools.snapShapes = it }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Hold to snap shapes", style = MaterialTheme.typography.bodyMedium)
+                    Text("Pause at the end of a stroke", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = tools.snapShapes, onCheckedChange = null)
+            }
         }
         ToolButton(Icons.Outlined.BorderColor, "Highlighter", tools.tool == Tool.Highlighter, { tools.tool = Tool.Highlighter }) {
             ColorRow(HighlighterColors, tools.highlighterColor, ink) { c -> c?.let { tools.highlighterColor = it } }
@@ -589,12 +621,19 @@ private fun reorder(items: List<Item>, ids: Set<String>, forward: Boolean): List
 }
 
 @Composable
-private fun SelectionStrip(s: PageState) {
+private fun SelectionStrip(s: PageState, onConvert: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
     ) {
+        if (s.items.any { it.id in s.selection && it is dev.kalpane.data.Stroke && !it.highlighter }) {
+            TextButton(onClick = onConvert) {
+                Icon(Icons.Outlined.TextFields, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("To text")
+            }
+        }
         Tool(Icons.Outlined.FlipToFront, "Bring forward") { s.commit(reorder(s.items, s.selection, forward = true)) }
         Tool(Icons.Outlined.FlipToBack, "Send backward") { s.commit(reorder(s.items, s.selection, forward = false)) }
         Tool(Icons.Outlined.Delete, "Delete") {
