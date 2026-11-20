@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
@@ -40,6 +39,11 @@ class WalkthroughTest {
         Thread.sleep(400) // let crossfades settle
         val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
         File(shots, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun back() {
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
     }
 
     private fun waitFor(matcher: androidx.compose.ui.test.SemanticsMatcher) =
@@ -68,11 +72,11 @@ class WalkthroughTest {
         }
         shot("04-page-shape")
 
-        Espresso.pressBack() // clear selection
-        Espresso.pressBack() // leave the page
+        back() // clear selection
+        back() // leave the page
         waitFor(hasContentDescription("Work, Page 1"))
         shot("05-notebook-after")
-        Espresso.pressBack()
+        back()
 
         waitFor(hasText("Notebooks"))
         shot("06-home")
@@ -82,7 +86,7 @@ class WalkthroughTest {
         shot("07-settings")
         rule.onNode(hasText("Dark")).performClick()
         shot("08-settings-dark")
-        Espresso.pressBack()
+        back()
         waitFor(hasText("Notebooks"))
         shot("09-home-dark")
     }
