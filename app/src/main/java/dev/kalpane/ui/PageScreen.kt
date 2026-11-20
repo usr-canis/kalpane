@@ -7,8 +7,12 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -132,6 +136,7 @@ fun PageScreen(vm: AppViewModel, ref: PageRef, tools: ToolState, onBack: () -> U
     var state by remember(ref) { mutableStateOf<PageState?>(null) }
     LaunchedEffect(ref) {
         val data = vm.load(ref)
+        data.damaged?.let { vm.notify("This page's drawing could not be read. The file was kept as $it.") }
         state = PageState(data.text, data.canvas.items, data.canvas.style)
     }
     val s = state
@@ -169,6 +174,8 @@ private fun PageEditor(
     val hScroll = rememberScrollState()
     val focus = remember { FocusRequester() }
     var skipSave by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    MessageHost(vm, snackbar)
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<String?>(null) }
     var version by remember { mutableStateOf<dev.kalpane.sync.GitHubSync.Commit?>(null) }
@@ -255,6 +262,7 @@ private fun PageEditor(
         })
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.weight(1f).fillMaxWidth()) {
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).zIndex(1f))
             PageSurface(s, controller, fingerDrawing, bitmaps, viewport, vScroll, hScroll, focus, font, size, paperStyle,
                 onLink = { target ->
                     scope.launch {
@@ -399,10 +407,16 @@ private fun PageSurface(
                             onHeight = { textHeight = it },
                             modifier = Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp),
                         )
+                        // Finished items sit in their own layer, redrawn only when they change,
+                        // so drawing a new stroke does not repaint the whole page.
+                        Canvas(Modifier.fillMaxSize().graphicsLayer()) {
+                            withTransform({ scale(scale, scale, Offset.Zero) }) {
+                                s.items.forEach { drawItem(it, colors.onSurface, cache, bitmaps, colors.surfaceContainerHigh) }
+                            }
+                        }
                         Canvas(Modifier.fillMaxSize()) {
                             withTransform({ scale(scale, scale, Offset.Zero) }) {
                                 val ink = colors.onSurface
-                                s.items.forEach { drawItem(it, ink, cache, bitmaps, colors.surfaceContainerHigh) }
                                 if (s.live.isNotEmpty() && !controller.wet) {
                                     val pts = s.live.toList()
                                     if (controller.liveHighlighter) drawHighlighter(pts, controller.liveWidth, itemColor(controller.liveColor, ink).copy(alpha = 0.38f))

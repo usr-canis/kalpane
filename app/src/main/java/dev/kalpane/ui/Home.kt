@@ -106,7 +106,6 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     val tags by vm.tags.collectAsStateWithLifecycle()
-    val pinned by vm.pinned.collectAsStateWithLifecycle()
     LaunchedEffect(initialQuery) {
         initialQuery?.let { query = it; vm.search(it); onQueryUsed() }
     }
@@ -222,11 +221,11 @@ fun HomeScreen(
                         }
                         item(span = { GridItemSpan(maxLineSpan) }, key = "books") { SectionTitle("Notebooks") }
                     }
-                    items(list.sortedByDescending { it.name in pinned }, key = { it.name }) { book ->
+                    items(list.sortedByDescending { it.pinned }, key = { it.name }) { book ->
                         NotebookCard(
                             book,
-                            pinned = book.name in pinned,
-                            onPin = { vm.togglePin(book.name) },
+                            pinned = book.pinned,
+                            onPin = { vm.togglePin(book) },
                             changes = if (sync.repo == null) null else changes.keys.count { it.startsWith("${book.name}/") },
                             onGit = { action ->
                                 if (action == "pullbook") {

@@ -45,6 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -206,6 +208,7 @@ fun PageThumbnail(page: PageInfo, modifier: Modifier = Modifier, onLongClick: ((
     val cache = remember { PathCache() }
     BoxWithConstraints(
         modifier.aspectRatio(0.72f).clip(RoundedCornerShape(10.dp))
+            .semantics { contentDescription = "${page.ref.notebook}, ${page.ref.name}" }
             .background(paper)
             .border(1.dp, colors.outlineVariant, RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),

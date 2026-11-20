@@ -136,6 +136,7 @@ class GitHubSync(
 
     private fun blob(sha: String): ByteArray {
         val b = get("git/blobs/$sha")
+        if ((b["size"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L) > 50L * 1024 * 1024) throw SyncException("A file in the repository is larger than 50 MB.")
         return Base64.getMimeDecoder().decode(b.str("content"))
     }
 

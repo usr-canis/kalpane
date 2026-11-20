@@ -111,6 +111,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
     fun clearMessage() { _message.value = null }
+    fun notify(text: String) { _message.value = text }
+
+    /** The last crash report saved on this device, if any. */
+    fun crashLog(): String? = KalpaneApplication.crashFile(getApplication()).takeIf { it.exists() }?.readText()
+    fun clearCrashLog() { KalpaneApplication.crashFile(getApplication()).delete() }
 
     private suspend fun <T> disk(block: () -> T): T = withContext(Dispatchers.IO) { lock.withLock { block() } }
 
@@ -146,7 +151,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun renameNotebook(old: String, name: String) = io {
         val renamed = store.renameNotebook(old, name)
-        if (old in _pinned.value) setPinned(_pinned.value - old + renamed)
+        if (renamed != old) store.relinkNotebook(old, renamed)
+        if (_sync.value.repo != null) _changes.value = computeChanges()
         reloadNotebooks()
     }
     fun deleteNotebook(name: String) = io {
@@ -188,7 +194,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun renamePage(ref: PageRef, name: String, onRenamed: (PageRef) -> Unit = {}) = viewModelScope.launch {
-        val new = runCatching { disk { store.renamePage(ref, name).also { reloadPages(ref.notebook) } } }
+        val new = runCatching {
+            disk {
+                store.renamePage(ref, name).also { new ->
+                    val links = if (new != ref) store.relinkPage(ref, new) else 0
+                    if (links > 0) _message.value = "Updated links on $links ${if (links == 1) "page" else "pages"}"
+                    reloadPages(ref.notebook)
+                    if (_sync.value.repo != null) _changes.value = computeChanges()
+                }
+            }
+        }
             .onFailure { _message.value = it.message }.getOrNull() ?: return@launch
         onRenamed(new)
     }
@@ -251,14 +266,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _tags = MutableStateFlow<Map<String, Int>>(emptyMap())
     val tags: StateFlow<Map<String, Int>> = _tags.asStateFlow()
 
-    private val _pinned = MutableStateFlow(prefs.getStringSet("pinned", emptySet())!!.toSet())
-    val pinned: StateFlow<Set<String>> = _pinned.asStateFlow()
-
-    fun togglePin(notebook: String) = setPinned(if (notebook in _pinned.value) _pinned.value - notebook else _pinned.value + notebook)
-
-    private fun setPinned(value: Set<String>) {
-        _pinned.value = value
-        prefs.edit().putStringSet("pinned", value).apply()
+    fun togglePin(book: NotebookInfo) = io {
+        store.setPinned(book.name, !book.pinned)
+        reloadNotebooks()
+        if (_sync.value.repo != null) _changes.value = computeChanges()
     }
 
     /** Marks a page as open so background backup waits. */

@@ -18,6 +18,16 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -84,6 +94,24 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
             )
+            var crash by remember { mutableStateOf(vm.crashLog()) }
+            var showCrash by remember { mutableStateOf(false) }
+            crash?.let { log ->
+                TextButton(onClick = { showCrash = true }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("View last crash report") }
+                if (showCrash) {
+                    val clipboard = LocalClipboardManager.current
+                    AlertDialog(
+                        onDismissRequest = { showCrash = false },
+                        title = { Text("Last crash") },
+                        text = {
+                            Text(log, fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                                modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()))
+                        },
+                        confirmButton = { TextButton(onClick = { clipboard.setText(AnnotatedString(log)); showCrash = false }) { Text("Copy") } },
+                        dismissButton = { TextButton(onClick = { vm.clearCrashLog(); crash = null; showCrash = false }) { Text("Delete") } },
+                    )
+                }
+            }
         }
     }
 }

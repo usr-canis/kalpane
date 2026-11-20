@@ -23,17 +23,18 @@ data class PageRef(val notebook: String, val name: String) {
     }
 }
 
-data class NotebookInfo(val name: String, val pages: Int, val modified: Long)
+data class NotebookInfo(val name: String, val pages: Int, val modified: Long, val pinned: Boolean = false)
 
 data class PageInfo(val ref: PageRef, val preview: String, val items: List<Item>, val modified: Long)
 
-data class PageData(val text: String, val canvas: CanvasDoc)
+/** [damaged] names a drawing file that could not be read and was set aside. */
+data class PageData(val text: String, val canvas: CanvasDoc, val damaged: String? = null)
 
 /** A search match: [snippet] is plain text with the match at [start] for [length] characters. */
 data class SearchHit(val ref: PageRef, val snippet: String, val start: Int, val length: Int)
 
 @Serializable
-private data class NotebookMeta(val pages: List<String> = emptyList())
+private data class NotebookMeta(val pages: List<String> = emptyList(), val pinned: Boolean = false)
 
 /** Not thread-safe: callers serialize access. */
 class NoteStore(val root: File) {
@@ -55,7 +56,7 @@ class NoteStore(val root: File) {
         root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }.orEmpty().map { d ->
             val names = pageNames(d.name)
             val modified = names.maxOfOrNull { pageModified(PageRef(d.name, it)) } ?: d.lastModified()
-            NotebookInfo(d.name, names.size, modified)
+            NotebookInfo(d.name, names.size, modified, meta(d.name).pinned)
         }.sortedByDescending { it.modified }
 
     /** Page names in their saved order; pages added outside the app are appended. */
@@ -68,13 +69,51 @@ class NoteStore(val root: File) {
                 else -> null
             }
         }.toSet()
-        val saved = runCatching { canvasJson.decodeFromString(NotebookMeta.serializer(), metaFile(notebook).readText()).pages }
-            .getOrDefault(emptyList())
+        val saved = meta(notebook).pages
         return saved.filter { it in onDisk } + onDisk.filter { it !in saved }.sorted()
     }
 
-    private fun saveOrder(notebook: String, names: List<String>) =
-        writeAtomic(metaFile(notebook), canvasJson.encodeToString(NotebookMeta.serializer(), NotebookMeta(names)).toByteArray())
+    private fun meta(notebook: String): NotebookMeta =
+        runCatching { canvasJson.decodeFromString(NotebookMeta.serializer(), metaFile(notebook).readText()) }.getOrDefault(NotebookMeta())
+
+    private fun saveMeta(notebook: String, meta: NotebookMeta) =
+        writeAtomic(metaFile(notebook), canvasJson.encodeToString(NotebookMeta.serializer(), meta).toByteArray())
+
+    private fun saveOrder(notebook: String, names: List<String>) = saveMeta(notebook, meta(notebook).copy(pages = names))
+
+    /** Pins are stored in notebook.json, so they travel with the notebook to the remote. */
+    fun setPinned(notebook: String, pinned: Boolean) = saveMeta(notebook, meta(notebook).copy(pages = pageNames(notebook), pinned = pinned))
+
+    /**
+     * Rewrites `[[...]]` links after a rename: `[[Old]]` in the page's own notebook and
+     * `[[Notebook/Old]]` everywhere. Returns how many pages changed.
+     */
+    fun relinkPage(old: PageRef, new: PageRef): Int = rewriteLinks { page, target ->
+        val t = target.trim()
+        when {
+            t.equals("${old.notebook}/${old.name}", ignoreCase = true) -> "${new.notebook}/${new.name}"
+            page.notebook == old.notebook && t.equals(old.name, ignoreCase = true) && '/' !in t ->
+                if (page.notebook == new.notebook) new.name else "${new.notebook}/${new.name}"
+            else -> null
+        }
+    }
+
+    fun relinkNotebook(old: String, new: String): Int = rewriteLinks { _, target ->
+        val t = target.trim()
+        if ('/' in t && t.substringBefore('/').trim().equals(old, ignoreCase = true)) "$new/${t.substringAfter('/').trim()}" else null
+    }
+
+    private fun rewriteLinks(map: (PageRef, String) -> String?): Int {
+        var changed = 0
+        for (page in allPages()) {
+            val file = textFile(page)
+            if (!file.exists()) continue
+            val text = file.readText()
+            val updated = MarkdownSpans.wiki.replace(text) { m -> map(page, m.groupValues[1])?.let { "[[$it]]" } ?: m.value }
+            if (updated != text) { writeAtomic(file, updated.toByteArray()); changed++ }
+        }
+        return changed
+    }
 
     private fun pageModified(ref: PageRef) = maxOf(textFile(ref).lastModified(), canvasFile(ref).lastModified())
 
@@ -88,10 +127,14 @@ class NoteStore(val root: File) {
 
     fun read(ref: PageRef): PageData {
         val text = textFile(ref).takeIf { it.exists() }?.readText() ?: ""
-        val canvas = canvasFile(ref).takeIf { it.exists() }?.let {
-            runCatching { canvasJson.decodeFromString(CanvasDoc.serializer(), it.readText()) }.getOrNull()
-        } ?: CanvasDoc()
-        return PageData(text, canvas)
+        val file = canvasFile(ref)
+        if (!file.exists()) return PageData(text, CanvasDoc())
+        val parsed = runCatching { canvasJson.decodeFromString(CanvasDoc.serializer(), file.readText()) }
+        if (parsed.isSuccess) return PageData(text, parsed.getOrThrow())
+        // Never let the next save overwrite a drawing we failed to read: keep it beside the page.
+        val kept = File(file.parentFile, "${ref.name}.canvas.damaged-${System.currentTimeMillis()}.json")
+        file.renameTo(kept)
+        return PageData(text, CanvasDoc(), damaged = kept.name)
     }
 
     fun write(ref: PageRef, data: PageData) {
