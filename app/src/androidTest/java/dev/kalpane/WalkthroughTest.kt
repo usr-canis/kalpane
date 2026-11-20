@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -57,8 +58,8 @@ class WalkthroughTest {
             runCatching { shot("fail-step$step") }
             runCatching {
                 File(shots, "fail-step$step-tree.txt").writeText(
-                    rule.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().joinToString("\n\n") { it.toString() } +
-                        "\n\n" + rule.onRoot(useUnmergedTree = true).fetchSemanticsNode().config.toString()
+                    "MERGED\n" + rule.onRoot().printToString(Int.MAX_VALUE) +
+                        "\n\nUNMERGED\n" + rule.onRoot(useUnmergedTree = true).printToString(Int.MAX_VALUE)
                 )
             }
             throw e
